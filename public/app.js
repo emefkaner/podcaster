@@ -316,6 +316,13 @@ async function renderEpisode(id) {
         <button class="btn" id="saveBtn">Speichern</button>
         <button class="btn ghost small" id="regenBtn" title="Neuen KI-Vorschlag">↻ Text</button>
       </div>
+      ${!ep.transcript?.trim() ? `
+        <div id="hintBox" class="hidden" style="margin-top:10px;">
+          <label>Worum ging es in der Folge?</label>
+          <input type="text" id="descHints" placeholder="z. B. Dune Teil 2, Sandwürmer, Hans Zimmer, langer Spoilerteil" />
+          <p class="field-hint">Für diese Folge gibt es kein Transkript — aus deinen Stichworten wird der Text geschrieben.</p>
+          <button class="btn small" id="hintGo" style="margin-top:6px;">Text schreiben lassen</button>
+        </div>` : ''}
 
       <label style="margin-top:20px;">Aufnahme-Teile (Reihenfolge = Abspielreihenfolge)</label>
       <div id="partList">${renderParts(ep)}</div>
@@ -437,8 +444,36 @@ async function renderEpisode(id) {
     }
   });
 
-  $('#regenBtn').addEventListener('click', async () => {
-    toast('Für einen neuen Vorschlag bitte Text manuell anpassen (Neu-Generierung folgt später).');
+  // Text neu vorschlagen lassen. Ohne Transkript wird erst nach Stichworten gefragt.
+  async function neuenTextHolen(hinweise, btn) {
+    const label = btn.textContent;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const r = await api(`/api/episodes/${encodeURIComponent(id)}/describe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hinweise }),
+      });
+      $('#epDesc').value = r.vorschlag;
+      $('#hintBox')?.classList.add('hidden');
+      toast('Neuer Vorschlag eingesetzt — prüfen und speichern.');
+    } catch (e) {
+      toast('Fehler: ' + e.message, 4500);
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+
+  $('#regenBtn').addEventListener('click', () => {
+    if (ep.transcript?.trim()) return neuenTextHolen('', $('#regenBtn'));
+    const box = $('#hintBox');
+    box.classList.remove('hidden');
+    $('#descHints').focus();
+  });
+
+  $('#hintGo')?.addEventListener('click', () => {
+    const hinweise = $('#descHints').value.trim();
+    if (!hinweise) return toast('Bitte ein paar Stichworte eingeben.');
+    neuenTextHolen(hinweise, $('#hintGo'));
   });
 
   if ($('#pubBtn')) $('#pubBtn').addEventListener('click', async () => {

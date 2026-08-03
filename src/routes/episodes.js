@@ -271,6 +271,32 @@ router.post('/:id/image', imageUpload.single('image'), async (req, res) => {
   }
 });
 
+// Infotext neu vorschlagen lassen. Nutzt das Transkript, falls vorhanden;
+// sonst den Titel und optional ein paar Stichworte.
+router.post('/:id/describe', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+
+  const hinweise = (req.body?.hinweise || '').trim();
+  const grundlage = [ep.transcript, hinweise].filter(Boolean).join('\n\n');
+
+  if (!grundlage) {
+    return res.status(400).json({
+      error: 'Für diese Folge gibt es kein Transkript. Bitte ein paar Stichworte zum Inhalt angeben.',
+    });
+  }
+
+  try {
+    const text = await generateDescription({ transcript: grundlage, title: ep.title });
+    const cur = getEpisode(ep.id);
+    cur.descriptionSuggestion = text;
+    saveEpisode(cur);
+    res.json({ vorschlag: text });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Cover-Vorschläge erzeugen: Ausgangsbild(er) passend zum Folgenthema abwandeln.
 router.post('/:id/artwork', async (req, res) => {
   const ep = getEpisode(req.params.id);
