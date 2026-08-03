@@ -1,0 +1,47 @@
+# Render-Blueprint. Mit Cloudflare R2 (empfohlen) liegen alle dauerhaften Daten
+# (MP3s, Cover, Metadaten-Backup) in R2 – der Server selbst braucht dann KEINEN
+# persistenten Datenträger und kann auf einem günstigen/kostenlosen Plan laufen.
+# Anleitung: render.com -> New -> Blueprint -> dieses Repo auswählen.
+services:
+  - type: web
+    name: podcast-studio
+    runtime: docker
+    # Mit R2 liegen alle Daten ausserhalb des Servers, daher reicht der Gratis-Plan.
+    # Hinweis: Der Gratis-Plan schlaeft bei Inaktivitaet ein (erster Aufruf danach
+    # ~30 Sek.) und hat wenig Arbeitsspeicher – falls der Anchor-Push (echter Browser)
+    # daran scheitert, im Dashboard auf "starter" hochstufen.
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATA_DIR
+        value: /data        # nur ephemerer Zwischenspeicher (wird nicht dauerhaft gebraucht)
+      - key: PORT
+        value: 3000
+      - key: PUBLIC_URL
+        sync: false          # nach dem ersten Deploy auf die echte Render-URL setzen
+      - key: APP_PASSWORD
+        sync: false          # im Render-Dashboard eintragen (geheim)
+      - key: SESSION_SECRET
+        generateValue: true  # Render erzeugt einen sicheren Zufallswert
+      - key: GEMINI_API_KEY
+        sync: false          # Transkription + Infotext (empfohlen, kostenlos)
+      - key: OPENAI_API_KEY
+        sync: false          # optionale Alternative zur Transkription (Whisper)
+      - key: ANTHROPIC_API_KEY
+        sync: false          # optionale Alternative für den Infotext (Claude)
+      # ---- Cloudflare R2 (empfohlen) ----
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false          # öffentliche Bucket-URL, z. B. https://pub-xxxx.r2.dev
+      # ---- Spotify for Podcasters / Anchor (optionaler Direkt-Push) ----
+      - key: ANCHOR_EMAIL
+        sync: false
+      - key: ANCHOR_PASSWORD
+        sync: false

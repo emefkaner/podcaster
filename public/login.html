@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Login – Podcast Studio</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="center">
+  <main class="card login-card">
+    <div class="logo">🎙️</div>
+    <h1>Podcast Studio</h1>
+    <p class="muted">Bitte mit deinem Passwort anmelden.</p>
+    <form id="loginForm">
+      <input type="password" id="password" placeholder="Passwort" autocomplete="current-password" required />
+      <button type="submit" class="btn primary">Anmelden</button>
+      <p id="error" class="error" hidden></p>
+    </form>
+  </main>
+  <script>
+    const form = document.getElementById('loginForm');
+    const err = document.getElementById('error');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.hidden = true;
+      const password = document.getElementById('password').value;
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        err.textContent = 'Falsches Passwort.';
+        err.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>
