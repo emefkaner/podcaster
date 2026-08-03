@@ -39,6 +39,11 @@ export const config = {
   // Optionale Alternativen.
   openaiKey: process.env.OPENAI_API_KEY || '',
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+  // Higgsfield – bevorzugte Quelle für Cover, sofern eingerichtet.
+  higgsfield: {
+    apiKey: process.env.HIGGSFIELD_API_KEY || '',
+    apiSecret: process.env.HIGGSFIELD_API_SECRET || '',
+  },
   // Spotify for Podcasters (Anchor) – für den direkten Push per Browser-Automation.
   anchor: {
     email: process.env.ANCHOR_EMAIL || '',

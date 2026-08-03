@@ -7,6 +7,7 @@ import { issueCookie, clearCookie, isLoggedIn, checkPassword } from './auth.js';
 import { buildFeed } from './rss.js';
 import { initStore } from './store.js';
 import { seedAssets } from './seed.js';
+import { haengendeFolgenFreigeben } from './recover.js';
 import { storageEnabled } from './storage.js';
 import episodesRouter from './routes/episodes.js';
 import settingsRouter from './routes/settings.js';
@@ -75,6 +76,7 @@ app.use(express.static(publicDir));
 // Startdateien (Intro/Outro) übernehmen, dann lauschen.
 initStore()
   .then(() => seedAssets())
+  .then(() => haengendeFolgenFreigeben())
   .catch((e) => console.error('Start-Initialisierung fehlgeschlagen:', e.message))
   .finally(() => {
     app.listen(config.port, () => {

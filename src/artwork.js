@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import { config } from './config.js';
+import { higgsfieldVerfuegbar, higgsfieldVorschlaege } from './artworkHiggsfield.js';
 
 // Erzeugt Folgen-Cover, indem ein festes Ausgangsbild (ihr als Team) passend zum
 // Thema der Folge abgewandelt wird – z. B. mit Spinnenmasken oder Spartanerhelmen.
@@ -66,13 +67,25 @@ export const DEFAULT_STYLE = [
  * @returns {Promise<{data: Buffer, mimeType: string}[]>}
  */
 export async function generateCandidates({ basePaths, wish, style, title, headline, subtitle, count = 3 }) {
-  if (!config.geminiKey) throw new Error('GEMINI_API_KEY ist nicht gesetzt.');
   const bases = (basePaths || []).filter((p) => p && fs.existsSync(p));
   if (!bases.length) throw new Error('Kein Ausgangsbild hinterlegt (in den Einstellungen festlegen).');
   if (!wish?.trim()) throw new Error('Bitte kurz beschreiben, was verändert werden soll.');
 
-  const ai = new GoogleGenAI({ apiKey: config.geminiKey });
   const prompt = buildPrompt({ style, wish, title, headline, subtitle });
+
+  // Higgsfield zuerst, wenn eingerichtet: dort liegen meist Guthaben, und der
+  // Soul-Modus hält Gesichter über mehrere Bilder hinweg zuverlässig konstant.
+  if (higgsfieldVerfuegbar()) {
+    try {
+      return await higgsfieldVorschlaege({ basePaths: bases, prompt, count });
+    } catch (err) {
+      console.error('Higgsfield fehlgeschlagen, versuche Gemini:', err.message);
+      if (!config.geminiKey) throw err;
+    }
+  }
+
+  if (!config.geminiKey) throw new Error('Weder Higgsfield- noch Gemini-Zugang eingerichtet.');
+  const ai = new GoogleGenAI({ apiKey: config.geminiKey });
 
   const parts = bases.map((file) => ({
     inlineData: { mimeType: mimeFor(file), data: fs.readFileSync(file).toString('base64') },

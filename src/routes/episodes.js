@@ -82,6 +82,8 @@ router.post('/', upload.array('audio', 12), async (req, res) => {
       enabled: req.body.trimSilence === 'true' || req.body.trimSilence === '1',
       seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSeconds) || 2)),
     },
+    // Wurde schon auf dem Gerät des Nutzers bearbeitet? Dann hier nicht nochmal.
+    lokalBearbeitet: req.body.lokalBearbeitet === 'true' || req.body.lokalBearbeitet === '1',
     error: '',
     createdAt: new Date().toISOString(),
     publishedAt: null,
@@ -216,6 +218,18 @@ router.delete('/:id/parts/:partId', async (req, res) => {
   await deleteKey(part.key);
   ep.parts = ep.parts.filter((p) => p.id !== part.id);
   ep.needsRebuild = true;
+  saveEpisode(ep);
+  res.json(ep);
+});
+
+// Festhängende Verarbeitung freigeben. Nötig, wenn ein Vorgang durch einen
+// Neustart verloren ging und die Folge sonst dauerhaft „in Arbeit" bliebe.
+router.post('/:id/abbrechen', (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  ep.status = 'error';
+  ep.error = 'Verarbeitung wurde abgebrochen. Du kannst sie erneut starten oder die Folge löschen.';
+  ep.fortschritt = null;
   saveEpisode(ep);
   res.json(ep);
 });
@@ -543,7 +557,10 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
     tmpFiles.push(outPath);
     const { duration, size } = await buildEpisode({
       intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
-      enhance: ep.enhance, trimSilence: ep.trimSilence,
+      // Wurde bereits auf dem Gerät bearbeitet, hier nicht noch einmal filtern –
+      // das würde nur Rechenzeit kosten und den Klang unnötig zweimal anfassen.
+      enhance: ep.lokalBearbeitet ? null : ep.enhance,
+      trimSilence: ep.lokalBearbeitet ? null : ep.trimSilence,
       onProgress: ({ prozent }) => melde('Audio wird zusammengebaut …', prozent),
     });
 

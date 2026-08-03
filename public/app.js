@@ -148,6 +148,15 @@ async function renderHome() {
         <p class="field-hint">Kürzt lange Denk- und Umschaltpausen, lässt Atempausen stehen.</p>
       </div>
 
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;" id="lokalLabel" class="hidden">
+        <input type="checkbox" id="lokalChk" checked style="width:auto;" />
+        Auf diesem Gerät bearbeiten <span class="muted">(viel schneller)</span>
+      </label>
+      <p class="field-hint hidden" id="lokalHint">
+        Rauschunterdrückung und Pausenkürzung rechnet dein Rechner statt des kleinen Servers.
+        Beim ersten Mal wird einmalig ein Audio-Werkzeug geladen (ca. 31 MB).
+      </p>
+
       <button id="submitBtn" class="btn primary" disabled style="margin-top:16px;">
         Verarbeiten &amp; als Entwurf anlegen
       </button>
@@ -171,6 +180,7 @@ async function renderHome() {
 
 // ---- Recorder (MediaRecorder API) ----
 let mediaRecorder, chunks = [], recordedBlob = null, timerInt, seconds = 0;
+let localAudio = null; // wird bei Bedarf nachgeladen (ffmpeg als WebAssembly)
 
 function setupRecorder() {
   const recBtn = $('#recBtn'), timer = $('#timer'), hint = $('#recHint');
@@ -222,6 +232,15 @@ function setupUpload() {
   strength.addEventListener('input', () => { strengthVal.textContent = strength.value; });
   chk.addEventListener('change', () => { wrap.style.opacity = chk.checked ? '1' : '0.4'; strength.disabled = !chk.checked; });
 
+  // Lokale Bearbeitung nur anbieten, wo sie sinnvoll ist (Rechner, genug Speicher).
+  import('/localaudio.js').then((mod) => {
+    localAudio = mod;
+    if (mod.lokalMoeglich()) {
+      $('#lokalLabel')?.classList.remove('hidden');
+      $('#lokalHint')?.classList.remove('hidden');
+    }
+  }).catch(() => {});
+
   const trimChk = $('#trimChk'), trimSec = $('#trimSec'), trimVal = $('#trimVal'), trimWrap = $('#trimWrap');
   const showTrim = () => { trimVal.textContent = (trimSec.value / 10).toFixed(1).replace('.', ','); };
   trimSec.addEventListener('input', showTrim);
@@ -244,25 +263,15 @@ async function submitEpisode() {
   const files = $('#fileInput').files;
   if (!files.length && !recordedBlob) return;
 
-  const fd = new FormData();
-  // Alle ausgewählten Dateien als Teile mitschicken – sonst die Aufnahme.
-  if (files.length) {
-    for (const f of files) fd.append('audio', f, f.name);
-  } else {
-    fd.append('audio', recordedBlob, 'aufnahme.webm');
-  }
-  fd.append('title', $('#titleInput').value.trim());
-  fd.append('enhance', $('#enhanceChk').checked ? 'true' : 'false');
-  fd.append('strength', $('#strength').value);
-  fd.append('trimSilence', $('#trimChk').checked ? 'true' : 'false');
-  fd.append('trimSeconds', String($('#trimSec').value / 10));
+  const enhance = { enabled: $('#enhanceChk').checked, strength: Number($('#strength').value) };
+  const trimSilence = { enabled: $('#trimChk').checked, seconds: Number($('#trimSec').value) / 10 };
+  const lokal = $('#lokalChk')?.checked && localAudio?.lokalMoeglich() && (enhance.enabled || trimSilence.enabled);
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Lädt hoch …';
+  btn.innerHTML = '<span class="spinner"></span> Arbeitet …';
 
   // Fortschrittsbalken unter dem Knopf einblenden.
-  let bar = $('#uploadBar');
-  if (!bar) {
+  if (!$('#uploadBar')) {
     btn.insertAdjacentHTML('afterend', `
       <div id="uploadBar" style="margin-top:10px;">
         <div class="progress"><div class="progress-fill" id="uploadFill"></div></div>
@@ -270,14 +279,40 @@ async function submitEpisode() {
       </div>`);
   }
   const fill = $('#uploadFill'), info = $('#uploadInfo');
+  const setzeBalken = (pct, text) => {
+    if (typeof pct === 'number') { fill.classList.remove('indeterminate'); fill.style.width = `${pct}%`; }
+    else { fill.classList.add('indeterminate'); }
+    info.textContent = text;
+  };
+
+  const fd = new FormData();
+  fd.append('title', $('#titleInput').value.trim());
+  fd.append('enhance', enhance.enabled ? 'true' : 'false');
+  fd.append('strength', String(enhance.strength));
+  fd.append('trimSilence', trimSilence.enabled ? 'true' : 'false');
+  fd.append('trimSeconds', String(trimSilence.seconds));
 
   try {
+    // Falls gewünscht: Rauschunterdrückung und Pausenkürzung hier rechnen.
+    const quellen = files.length ? [...files] : [new File([recordedBlob], 'aufnahme.webm')];
+    if (lokal) {
+      let nr = 0;
+      for (const datei of quellen) {
+        nr++;
+        const fertig = await localAudio.lokalAufbereiten(datei, { enhance, trimSilence },
+          (text, pct) => setzeBalken(pct, `Teil ${nr} von ${quellen.length}: ${text}`));
+        fd.append('audio', fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3');
+      }
+      fd.append('lokalBearbeitet', 'true');
+    } else {
+      for (const datei of quellen) fd.append('audio', datei, datei.name);
+    }
+
     const ep = await uploadMitFortschritt('/api/episodes', fd, (geladen, gesamt) => {
       const pct = Math.round((geladen / gesamt) * 100);
-      fill.style.width = `${pct}%`;
-      info.textContent = pct < 100
-        ? `${pct} % · ${fmtMB(geladen)} von ${fmtMB(gesamt)} MB`
-        : 'Hochgeladen — Verarbeitung startet …';
+      setzeBalken(pct, pct < 100
+        ? `Wird hochgeladen: ${pct} % · ${fmtMB(geladen)} von ${fmtMB(gesamt)} MB`
+        : 'Hochgeladen — Verarbeitung startet …');
     });
     toast('Hochgeladen – Verarbeitung läuft.');
     go(`/episode/${encodeURIComponent(ep.id)}`);
@@ -411,20 +446,45 @@ async function renderEpisode(id) {
             </li>`).join('')}
         </ol>
         <p class="field-hint">Läuft im Hintergrund weiter — du kannst die Seite verlassen.</p>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="btn ghost small" id="stuckBtn">Hängt fest?</button>
+          <button class="btn danger small" id="delProc">Folge löschen</button>
+        </div>
       </div>`;
-    setTimeout(() => renderEpisode(id), 2500);
+
+    $('#delProc').addEventListener('click', () => deleteEpisode(id));
+    $('#stuckBtn').addEventListener('click', async () => {
+      if (!confirm('Verarbeitung als abgebrochen markieren?\n\nDanach kannst du sie neu starten oder die Folge löschen.')) return;
+      await api(`/api/episodes/${encodeURIComponent(id)}/abbrechen`, { method: 'POST' });
+      renderEpisode(id);
+    });
+
+    setTimeout(() => { if (location.pathname.includes(id)) renderEpisode(id); }, 2500);
     return;
   }
 
   if (ep.status === 'error') {
+    const hatTeile = (ep.parts || []).length > 0;
     view.innerHTML = `
       <button class="back" onclick="history.back()">← Zurück</button>
       <div class="card">
-        <h3>${escapeHtml(ep.title)}</h3>
-        <p class="error">Verarbeitung fehlgeschlagen: ${escapeHtml(ep.error || '')}</p>
-        <button class="btn danger" id="delBtn">Löschen</button>
+        <h3 style="margin-top:0;">${escapeHtml(ep.title)}</h3>
+        <p class="error">${escapeHtml(ep.error || 'Verarbeitung fehlgeschlagen.')}</p>
+        ${hatTeile ? `<p class="field-hint">${ep.parts.length} Aufnahme-Teil(e) sind noch vorhanden.</p>` : ''}
+        <div class="btn-row" style="margin-top:12px;">
+          ${hatTeile ? '<button class="btn primary" id="retryBtn">Erneut versuchen</button>' : ''}
+          <button class="btn danger" id="delBtn">Löschen</button>
+        </div>
       </div>`;
     $('#delBtn').addEventListener('click', () => deleteEpisode(id));
+    $('#retryBtn')?.addEventListener('click', async () => {
+      await api(`/api/episodes/${encodeURIComponent(id)}/build`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ withText: true }),
+      });
+      toast('Neuer Versuch gestartet.');
+      renderEpisode(id);
+    });
     return;
   }
 
@@ -1135,7 +1195,7 @@ async function loadStatus() {
           ${p.ohneText ? `<div class="error">⚠️ ${p.ohneText} Folge(n) ohne Text</div>` : '<div>✍️ Alle Folgen haben einen Text</div>'}
           <div class="muted" style="font-size:.82rem;">Belegter Speicher: ca. ${p.gesamtgroesseMB} MB von 10 000 MB</div>
         </div>` : ''}
-        <div class="muted" style="font-size:.82rem;margin-top:6px;">Bildmodell: ${escapeHtml(st.bildmodell)}</div>
+        <div class="muted" style="font-size:.82rem;margin-top:6px;">Cover-Generator: ${escapeHtml(st.bildanbieter)}</div>
       </div>`;
   } catch (e) {
     box.innerHTML = `<p class="error">Status nicht abrufbar: ${escapeHtml(e.message)}</p>`;

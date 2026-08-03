@@ -27,6 +27,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
+  // Nur eigene Dateien behandeln. Fremde Adressen (etwa das Audio-Werkzeug oder
+  // die Mediendateien im Speicher) gehen unangetastet ans Netz.
+  if (url.origin !== self.location.origin) return;
+
   // API, Feed und Medien immer direkt aus dem Netz.
   if (e.request.method !== 'GET' ||
       url.pathname.startsWith('/api/') ||
