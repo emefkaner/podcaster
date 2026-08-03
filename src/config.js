@@ -23,7 +23,13 @@ export const config = {
   port: Number(process.env.PORT || 3000),
   password: process.env.APP_PASSWORD || '',
   sessionSecret: process.env.SESSION_SECRET || 'unsicheres-standard-secret-bitte-aendern',
-  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, ''),
+  // Öffentliche Adresse der App. Auf Render steht sie automatisch in
+  // RENDER_EXTERNAL_URL – dann muss PUBLIC_URL gar nicht gesetzt werden.
+  publicUrl: (
+    process.env.PUBLIC_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://localhost:${process.env.PORT || 3000}`
+  ).replace(/\/$/, ''),
   // Gemini: Standard für Transkription + Infotext (kostenloser Kontingentbereich).
   geminiKey: process.env.GEMINI_API_KEY || '',
   // Optionale Alternativen.
