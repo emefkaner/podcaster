@@ -84,7 +84,7 @@ function mainChain({ enhance, trimSilence }) {
 // etwa Vorgespräch und Spoilerteil, manchmal zusätzlich Wiederholungen.
 // Alle Segmente werden neu kodiert und normalisiert. Auf die Aufnahmen wird
 // – falls gewünscht – die KI-/DSP-Sprachoptimierung angewendet.
-export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence }) {
+export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence, onProgress }) {
   const mains = (Array.isArray(main) ? main : [main]).filter(Boolean);
   const ordered = [
     { file: intro, isMain: false },
@@ -114,6 +114,12 @@ export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence
       .audioChannels(CHANNELS)
       .audioFrequency(SAMPLE_RATE)
       .format('mp3')
+      // Fortschritt weitermelden, damit die App einen Balken zeigen kann.
+      .on('progress', (p) => {
+        if (typeof onProgress === 'function') {
+          onProgress({ prozent: Math.min(99, Math.round(p.percent || 0)), stand: p.timemark });
+        }
+      })
       .on('error', reject)
       .on('end', async () => {
         try {

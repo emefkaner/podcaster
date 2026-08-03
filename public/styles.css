@@ -359,6 +359,46 @@ input[type="range"] { accent-color: var(--pink); }
 .badge.published  { background: var(--pink-soft); color: #ff7ab8; border-color: rgba(255,45,143,.35); }
 .badge.error      { background: rgba(255,77,109,.14); color: var(--danger); border-color: rgba(255,77,109,.35); }
 
+/* ---------- Fortschrittsbalken ---------- */
+.progress {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--grad);
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+/* Ohne bekannten Anteil: wandernder Streifen statt stehendem Balken */
+.progress-fill.indeterminate {
+  width: 38%;
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill.indeterminate { animation: none; width: 100%; opacity: .5; }
+}
+
+/* Schrittliste während der Verarbeitung */
+.steps {
+  list-style: none;
+  margin: 16px 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: .92rem;
+}
+.steps li { color: var(--muted); display: flex; align-items: center; gap: 9px; }
+.steps li.fertig { color: var(--success); }
+.steps li.aktiv { color: var(--text); font-weight: 600; }
+
 /* ---------- Kopfzeile der Folgenliste ---------- */
 .list-head {
   display: flex;

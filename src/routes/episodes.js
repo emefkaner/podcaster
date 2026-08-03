@@ -506,8 +506,17 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
   let ep = getEpisode(id);
   if (!ep) return;
 
+  // Zwischenstände festhalten, damit die App den Fortschritt zeigen kann.
+  const melde = (phase, prozent = null) => {
+    const cur = getEpisode(id);
+    if (!cur) return;
+    cur.fortschritt = { phase, prozent, stand: new Date().toISOString() };
+    saveEpisode(cur);
+  };
+
   const tmpFiles = [];
   try {
+    melde('Aufnahmen werden geladen …');
     // Aufnahme-Teile in ihrer Reihenfolge in den Arbeitsordner holen.
     const partPaths = [];
     for (const part of ep.parts || []) {
@@ -529,14 +538,17 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
     }
 
     // 1) Intro + alle Teile + Outro zusammenfügen (inkl. optionaler Optimierung).
+    melde('Audio wird zusammengebaut …', 0);
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
     const { duration, size } = await buildEpisode({
       intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
       enhance: ep.enhance, trimSilence: ep.trimSilence,
+      onProgress: ({ prozent }) => melde('Audio wird zusammengebaut …', prozent),
     });
 
     // 2) Fertige MP3 in den dauerhaften Speicher legen.
+    melde('Fertige Folge wird gespeichert …');
     const audioKey = `episodes/${id}.mp3`;
     const audioUrl = await uploadFile(outPath, audioKey, 'audio/mpeg');
 
@@ -552,10 +564,12 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
     if (withText) {
       let transcript = '';
       try {
+        melde('Aufnahme wird transkribiert … (dauert bei langen Folgen)');
         transcript = await transcribeAll(partPaths);
       } catch (err) {
         console.error('Transkription fehlgeschlagen:', err.message);
       }
+      melde('Infotext wird geschrieben …');
       const description = await generateDescription({ transcript, title: getEpisode(id).title });
       ep = getEpisode(id);
       ep.transcript = transcript;
@@ -567,6 +581,7 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
 
     ep = getEpisode(id);
     ep.status = 'draft';
+    ep.fortschritt = null;
     saveEpisode(ep);
   } finally {
     for (const f of tmpFiles) fs.rmSync(f, { force: true });

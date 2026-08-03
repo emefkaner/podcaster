@@ -13,6 +13,32 @@ function toast(msg, ms = 2600) {
   toast._t = setTimeout(() => t.classList.add('hidden'), ms);
 }
 
+// Upload mit Fortschrittsanzeige. fetch() meldet keinen Sendefortschritt,
+// deshalb hier der klassische Weg über XMLHttpRequest.
+function uploadMitFortschritt(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(e.loaded, e.total);
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status === 401) { window.location.href = '/login'; return reject(new Error('unauth')); }
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+      else reject(new Error(body.error || `Fehler ${xhr.status}`));
+    });
+    xhr.addEventListener('error', () => reject(new Error('Verbindung unterbrochen')));
+    xhr.addEventListener('abort', () => reject(new Error('Abgebrochen')));
+    xhr.send(formData);
+  });
+}
+
+function fmtMB(bytes) {
+  return (bytes / 1048576).toFixed(1).replace('.', ',');
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, opts);
   if (res.status === 401) { window.location.href = '/login'; throw new Error('unauth'); }
@@ -233,12 +259,31 @@ async function submitEpisode() {
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Lädt hoch …';
+
+  // Fortschrittsbalken unter dem Knopf einblenden.
+  let bar = $('#uploadBar');
+  if (!bar) {
+    btn.insertAdjacentHTML('afterend', `
+      <div id="uploadBar" style="margin-top:10px;">
+        <div class="progress"><div class="progress-fill" id="uploadFill"></div></div>
+        <p class="field-hint" id="uploadInfo">Vorbereiten …</p>
+      </div>`);
+  }
+  const fill = $('#uploadFill'), info = $('#uploadInfo');
+
   try {
-    const ep = await api('/api/episodes', { method: 'POST', body: fd });
+    const ep = await uploadMitFortschritt('/api/episodes', fd, (geladen, gesamt) => {
+      const pct = Math.round((geladen / gesamt) * 100);
+      fill.style.width = `${pct}%`;
+      info.textContent = pct < 100
+        ? `${pct} % · ${fmtMB(geladen)} von ${fmtMB(gesamt)} MB`
+        : 'Hochgeladen — Verarbeitung startet …';
+    });
     toast('Hochgeladen – Verarbeitung läuft.');
     go(`/episode/${encodeURIComponent(ep.id)}`);
   } catch (err) {
-    toast('Fehler: ' + err.message);
+    toast('Fehler: ' + err.message, 4500);
+    $('#uploadBar')?.remove();
     btn.disabled = false;
     btn.textContent = 'Verarbeiten & als Entwurf anlegen';
   }
@@ -337,14 +382,37 @@ async function renderEpisode(id) {
 
   // Solange in Verarbeitung: Statusanzeige + Polling.
   if (ep.status === 'processing') {
+    const f = ep.fortschritt || {};
+    const hatProzent = typeof f.prozent === 'number' && f.prozent > 0;
+    const schritte = [
+      'Aufnahmen werden geladen',
+      'Audio wird zusammengebaut',
+      'Fertige Folge wird gespeichert',
+      'Aufnahme wird transkribiert',
+      'Infotext wird geschrieben',
+    ];
+    const aktuell = schritte.findIndex((s) => (f.phase || '').startsWith(s));
+
     view.innerHTML = `
       <button class="back" onclick="history.back()">← Zurück</button>
-      <div class="card" style="text-align:center;">
-        <p><span class="spinner"></span></p>
-        <h3>${escapeHtml(ep.title)}</h3>
-        <p class="muted">Zusammenfügen, Optimieren, Transkribieren und Infotext erstellen …<br>Das kann je nach Länge ein paar Minuten dauern.</p>
+      <div class="card">
+        <h3 style="margin-top:0;">${escapeHtml(ep.title)}</h3>
+        <div class="progress" style="margin:14px 0 8px;">
+          <div class="progress-fill${hatProzent ? '' : ' indeterminate'}"
+               style="${hatProzent ? `width:${f.prozent}%` : ''}"></div>
+        </div>
+        <p style="margin:0;font-weight:600;">
+          ${escapeHtml(f.phase || 'Wird vorbereitet …')}${hatProzent ? ` <span class="muted">${f.prozent} %</span>` : ''}
+        </p>
+        <ol class="steps">
+          ${schritte.map((s, i) => `
+            <li class="${i < aktuell ? 'fertig' : i === aktuell ? 'aktiv' : ''}">
+              ${i < aktuell ? '✓' : i === aktuell ? '<span class="spinner"></span>' : '○'} ${s}
+            </li>`).join('')}
+        </ol>
+        <p class="field-hint">Läuft im Hintergrund weiter — du kannst die Seite verlassen.</p>
       </div>`;
-    setTimeout(() => renderEpisode(id), 4000);
+    setTimeout(() => renderEpisode(id), 2500);
     return;
   }
 
