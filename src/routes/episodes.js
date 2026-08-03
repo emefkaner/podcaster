@@ -30,12 +30,28 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB – reicht für lange Folgen
 });
 
-router.get('/', (req, res) => res.json(listEpisodes()));
+// Fortlaufende Nummer für veröffentlichte Folgen – älteste ist Nummer 1.
+// Dient nur der eigenen Übersicht und taucht bewusst nicht im RSS-Feed auf.
+function folgennummern(eps) {
+  const nummern = new Map();
+  eps
+    .filter((e) => e.status === 'published')
+    .sort((a, b) => new Date(a.publishedAt || a.createdAt) - new Date(b.publishedAt || b.createdAt))
+    .forEach((e, i) => nummern.set(e.id, i + 1));
+  return nummern;
+}
+
+router.get('/', (req, res) => {
+  const eps = listEpisodes();
+  const nummern = folgennummern(eps);
+  res.json(eps.map((e) => ({ ...e, nummer: nummern.get(e.id) || null })));
+});
 
 router.get('/:id', (req, res) => {
-  const ep = getEpisode(req.params.id);
+  const eps = listEpisodes();
+  const ep = eps.find((e) => e.id === req.params.id);
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
-  res.json(ep);
+  res.json({ ...ep, nummer: folgennummern(eps).get(ep.id) || null });
 });
 
 // Neue Folge anlegen. Es dürfen gleich mehrere Aufnahme-Teile mitkommen –

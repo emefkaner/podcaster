@@ -359,6 +359,19 @@ input[type="range"] { accent-color: var(--pink); }
 .badge.published  { background: var(--pink-soft); color: #ff7ab8; border-color: rgba(255,45,143,.35); }
 .badge.error      { background: rgba(255,77,109,.14); color: var(--danger); border-color: rgba(255,77,109,.35); }
 
+/* Interne Folgennummer – nur in der eigenen Übersicht, nicht im RSS-Feed */
+.epnum {
+  font-size: .78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 /* ---------- Sonstiges ---------- */
 .spinner {
   display: inline-block;

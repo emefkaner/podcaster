@@ -245,11 +245,14 @@ async function loadEpisodes() {
     if (!eps.length) { list.innerHTML = '<p class="muted">Noch keine Folgen.</p>'; return; }
     list.innerHTML = eps.map((e) => `
       <div class="episode" data-id="${e.id}">
-        <div>
+        <div style="min-width:0;">
           <h3>${escapeHtml(e.title)}</h3>
-          <div class="meta">${fmtDate(e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
+          <div class="meta">${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
         </div>
-        <span class="badge ${e.status}">${STATUS_LABEL[e.status] || e.status}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex:none;">
+          <span class="badge ${e.status}">${STATUS_LABEL[e.status] || e.status}</span>
+          ${e.nummer ? `<span class="epnum" title="Interne Folgennummer">#${e.nummer}</span>` : ''}
+        </div>
       </div>`).join('');
     list.querySelectorAll('.episode').forEach((el) =>
       el.addEventListener('click', () => go(`/episode/${encodeURIComponent(el.dataset.id)}`)));
@@ -301,6 +304,7 @@ async function renderEpisode(id) {
     <button class="back" onclick="history.back()">← Zurück</button>
     <div class="card">
       <span class="badge ${ep.status}">${STATUS_LABEL[ep.status]}</span>
+      ${ep.nummer ? `<span class="epnum" title="Interne Folgennummer – erscheint nicht im Feed">#${ep.nummer}</span>` : ''}
       <label for="epTitle">Titel</label>
       <input type="text" id="epTitle" value="${escapeAttr(ep.title)}" />
 
