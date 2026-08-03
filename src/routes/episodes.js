@@ -109,6 +109,9 @@ router.post('/:id/artwork', async (req, res) => {
   const settings = getSettings();
   const wish = (req.body?.prompt || '').trim();
   const count = Math.min(4, Math.max(1, Number(req.body?.count) || 3));
+  // Titelzeile aufs Cover: was eingegeben wurde, sonst der Folgentitel.
+  const headline = (req.body?.headline ?? ep.artworkHeadline ?? ep.title ?? '').trim();
+  const subtitle = (req.body?.subtitle ?? ep.artworkSubtitle ?? '').trim();
 
   // Ausgangsbilder in den Arbeitsordner holen.
   const localBases = [];
@@ -123,7 +126,8 @@ router.post('/:id/artwork', async (req, res) => {
       wish,
       style: settings.imageStyle,
       title: ep.title,
-      headline: settings.coverHeadline,
+      headline,
+      subtitle,
       count,
     });
 
@@ -146,6 +150,8 @@ router.post('/:id/artwork', async (req, res) => {
     }
     cur.artworkCandidates = candidates;
     cur.artworkPrompt = wish;
+    cur.artworkHeadline = headline;
+    cur.artworkSubtitle = subtitle;
     saveEpisode(cur);
 
     res.json({ candidates });

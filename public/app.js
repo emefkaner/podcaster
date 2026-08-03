@@ -264,8 +264,17 @@ async function renderEpisode(id) {
 
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;">
         <b style="font-size:.95rem;">🎨 Cover generieren</b>
-        <p class="field-hint" style="margin-top:4px;">Gesichter, Anordnung und der Schriftzug bleiben gleich. Beschreib nur <b>Kleidung und Hintergrund</b> — z. B. „Spider-Man-Anzüge, Netze und Hochhäuser im Hintergrund" oder „Spartaner-Rüstungen mit Helm, Zyklop im Hintergrund".</p>
-        <textarea id="artPrompt" style="min-height:70px;" placeholder="Spartaner-Rüstungen mit Helmen, antikes Meer und Zyklop im Hintergrund">${escapeHtml(ep.artworkPrompt || '')}</textarea>
+        <p class="field-hint" style="margin-top:4px;">Eure Gesichter bleiben immer gleich. Titel, Kleidung, Kulisse und Stimmung passen sich dem Film an.</p>
+
+        <label style="margin-top:10px;">Titel oben aufs Cover</label>
+        <input type="text" id="artHeadline" value="${escapeAttr(ep.artworkHeadline || ep.title || '')}" placeholder="z. B. CINESPASTEN CRIME 101" />
+
+        <label>Unterzeile unten <span class="muted">(optional)</span></label>
+        <input type="text" id="artSubtitle" value="${escapeAttr(ep.artworkSubtitle || '')}" placeholder="z. B. EASY ON THE SPACE SUITS" />
+
+        <label>Kleidung, Kulisse &amp; Stimmung</label>
+        <textarea id="artPrompt" style="min-height:70px;" placeholder="Spartaner-Rüstungen mit Helmen, antikes Meer, Zyklop im Hintergrund, warmes Abendlicht">${escapeHtml(ep.artworkPrompt || '')}</textarea>
+
         <button class="btn" id="artBtn" style="margin-top:10px;">3 Vorschläge generieren</button>
         <p class="field-hint">Kostet ein paar Cent pro Durchgang.</p>
         <div id="artResult"></div>
@@ -324,7 +333,11 @@ async function renderEpisode(id) {
     try {
       const r = await api(`/api/episodes/${encodeURIComponent(id)}/artwork`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, count: 3 }),
+        body: JSON.stringify({
+          prompt, count: 3,
+          headline: $('#artHeadline').value,
+          subtitle: $('#artSubtitle').value,
+        }),
       });
       showCandidates(id, r.candidates);
       toast(`${r.candidates.length} Vorschläge fertig.`);
@@ -490,12 +503,9 @@ async function renderSettings() {
       <input type="file" id="baseFiles" accept="image/*" multiple />
       <button class="btn ghost small" id="baseUploadBtn" style="margin-top:8px;">Ausgangsbilder hinzufügen</button>
 
-      <label style="margin-top:18px;">Schriftzug oben auf jedem Cover</label>
-      <input type="text" id="s_coverHeadline" value="${escapeAttr(s.coverHeadline || '')}" />
-
-      <label style="margin-top:14px;">Stil-Vorgabe (gilt für alle Folgen)</label>
+      <label style="margin-top:18px;">Grund-Look (gilt für alle Folgen)</label>
       <textarea id="s_imageStyle" style="min-height:90px;">${escapeHtml(s.imageStyle || '')}</textarea>
-      <p class="field-hint">Beschreibt den durchgehenden Look. Gesichter, Anordnung und Schriftzug bleiben ohnehin immer gleich — pro Folge änderst du nur Kleidung und Hintergrund.</p>
+      <p class="field-hint">Der durchgehende Look eurer Reihe. Titel, Kleidung und Kulisse legst du pro Folge fest.</p>
       <button class="btn ghost small" id="saveStyleBtn" style="margin-top:8px;">Stil speichern</button>
     </div>
 
@@ -564,12 +574,9 @@ async function renderSettings() {
   $('#saveStyleBtn').addEventListener('click', async () => {
     await api('/api/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageStyle: $('#s_imageStyle').value,
-        coverHeadline: $('#s_coverHeadline').value,
-      }),
+      body: JSON.stringify({ imageStyle: $('#s_imageStyle').value }),
     });
-    toast('Stil gespeichert.');
+    toast('Look gespeichert.');
   });
 
   $('#importBtn').addEventListener('click', async () => {
