@@ -454,10 +454,12 @@ function renderParts(ep) {
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg);">
       <span class="muted" style="font-variant-numeric:tabular-nums;">${i + 1}.</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem;">${escapeHtml(p.name || 'Teil')}</span>
+      <button class="btn ghost small partEdit" data-id="${escapeAttr(p.id)}" title="schneiden">✂️</button>
       <button class="btn ghost small partUp" data-id="${escapeAttr(p.id)}" ${i === 0 ? 'disabled' : ''} title="nach oben">↑</button>
       <button class="btn ghost small partDown" data-id="${escapeAttr(p.id)}" ${i === parts.length - 1 ? 'disabled' : ''} title="nach unten">↓</button>
       <button class="btn ghost small partDel" data-id="${escapeAttr(p.id)}" title="entfernen" style="color:var(--danger);">×</button>
-    </div>`).join('');
+    </div>
+    <div id="editor-${escapeAttr(p.id)}" class="hidden" style="margin:-2px 0 10px;"></div>`).join('');
 }
 
 // Verdrahtet die Knöpfe der Teile-Liste.
@@ -475,6 +477,8 @@ function wireParts(id, ep) {
     renderEpisode(id);
   };
 
+  view.querySelectorAll('.partEdit').forEach((b) =>
+    b.addEventListener('click', () => openWaveEditor(id, b.dataset.id)));
   view.querySelectorAll('.partUp').forEach((b) => b.addEventListener('click', () => move(b.dataset.id, -1)));
   view.querySelectorAll('.partDown').forEach((b) => b.addEventListener('click', () => move(b.dataset.id, 1)));
   view.querySelectorAll('.partDel').forEach((b) => b.addEventListener('click', async () => {
@@ -509,6 +513,144 @@ function wireParts(id, ep) {
     toast('Wird neu zusammengebaut …');
     renderEpisode(id);
   });
+}
+
+// ---- Wellenform-Editor: Bereiche markieren und herausschneiden ----
+const waveState = {}; // partId -> { peaks, duration, sel: {start,end}|null }
+
+async function openWaveEditor(episodeId, partId) {
+  const box = document.getElementById(`editor-${partId}`);
+  if (!box) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+
+  box.classList.remove('hidden');
+  box.innerHTML = '<p class="field-hint"><span class="spinner"></span> Wellenform wird berechnet …</p>';
+
+  try {
+    const data = waveState[partId]?.peaks
+      ? waveState[partId]
+      : await api(`/api/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/peaks`);
+    waveState[partId] = { peaks: data.peaks, duration: data.duration, sel: null };
+
+    box.innerHTML = `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg);">
+        <canvas id="wave-${partId}" style="width:100%;height:90px;display:block;touch-action:none;cursor:crosshair;"></canvas>
+        <p class="field-hint" id="waveInfo-${partId}" style="margin:8px 0 0;">
+          Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(data.duration)}
+        </p>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn ghost small" id="waveClear-${partId}" disabled>Auswahl aufheben</button>
+          <button class="btn danger small" id="waveCut-${partId}" disabled>Auswahl herausschneiden</button>
+        </div>
+      </div>`;
+
+    drawWave(partId);
+    wireWave(episodeId, partId);
+  } catch (e) {
+    box.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function fmtClock(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function drawWave(partId) {
+  const cv = document.getElementById(`wave-${partId}`);
+  const st = waveState[partId];
+  if (!cv || !st) return;
+
+  const ratio = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * ratio; cv.height = h * ratio;
+  const ctx = cv.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.clearRect(0, 0, w, h);
+
+  const style = getComputedStyle(document.body);
+  const accent = style.getPropertyValue('--primary').trim() || '#6366f1';
+  const mid = h / 2;
+  const n = st.peaks.length;
+
+  // Markierter Bereich als Hintergrund.
+  if (st.sel) {
+    const x1 = (st.sel.start / st.duration) * w;
+    const x2 = (st.sel.end / st.duration) * w;
+    ctx.fillStyle = 'rgba(239,68,68,0.25)';
+    ctx.fillRect(Math.min(x1, x2), 0, Math.abs(x2 - x1), h);
+  }
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = Math.max(1, w / n * 0.8);
+  for (let i = 0; i < n; i++) {
+    const x = (i / n) * w;
+    const amp = st.peaks[i] * (h / 2) * 0.95;
+    ctx.beginPath();
+    ctx.moveTo(x, mid - amp);
+    ctx.lineTo(x, mid + amp);
+    ctx.stroke();
+  }
+}
+
+function wireWave(episodeId, partId) {
+  const cv = document.getElementById(`wave-${partId}`);
+  const st = waveState[partId];
+  const info = document.getElementById(`waveInfo-${partId}`);
+  const cutBtn = document.getElementById(`waveCut-${partId}`);
+  const clearBtn = document.getElementById(`waveClear-${partId}`);
+  let dragging = false, anchor = 0;
+
+  const posToTime = (e) => {
+    const r = cv.getBoundingClientRect();
+    const x = ((e.touches?.[0]?.clientX ?? e.clientX) - r.left) / r.width;
+    return Math.min(st.duration, Math.max(0, x * st.duration));
+  };
+  const update = () => {
+    drawWave(partId);
+    const has = st.sel && st.sel.end - st.sel.start > 0.2;
+    cutBtn.disabled = !has;
+    clearBtn.disabled = !st.sel;
+    info.textContent = has
+      ? `Markiert: ${fmtClock(st.sel.start)} – ${fmtClock(st.sel.end)} (${(st.sel.end - st.sel.start).toFixed(1)} Sek.)`
+      : `Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(st.duration)}`;
+  };
+
+  const start = (e) => { dragging = true; anchor = posToTime(e); st.sel = { start: anchor, end: anchor }; update(); e.preventDefault(); };
+  const moveTo = (e) => {
+    if (!dragging) return;
+    const t = posToTime(e);
+    st.sel = { start: Math.min(anchor, t), end: Math.max(anchor, t) };
+    update(); e.preventDefault();
+  };
+  const end = () => { dragging = false; };
+
+  cv.addEventListener('pointerdown', start);
+  cv.addEventListener('pointermove', moveTo);
+  window.addEventListener('pointerup', end);
+
+  clearBtn.addEventListener('click', () => { st.sel = null; update(); });
+
+  cutBtn.addEventListener('click', async () => {
+    if (!st.sel) return;
+    const len = (st.sel.end - st.sel.start).toFixed(1);
+    if (!confirm(`${len} Sekunden herausschneiden (${fmtClock(st.sel.start)} – ${fmtClock(st.sel.end)})?`)) return;
+    cutBtn.disabled = true; cutBtn.innerHTML = '<span class="spinner"></span> Schneidet …';
+    try {
+      await api(`/api/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/cut`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cuts: [st.sel] }),
+      });
+      delete waveState[partId];
+      toast('Bereich entfernt ✓');
+      renderEpisode(episodeId);
+    } catch (e) {
+      toast('Fehler: ' + e.message);
+      cutBtn.disabled = false; cutBtn.textContent = 'Auswahl herausschneiden';
+    }
+  });
+
+  update();
 }
 
 // Zeigt die generierten Cover-Vorschläge zur Auswahl an.

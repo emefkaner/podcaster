@@ -13,6 +13,7 @@ import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
 import { generateCandidates } from '../artwork.js';
+import { generatePeaks, cutRegions } from '../waveform.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -102,6 +103,73 @@ router.post('/:id/parts', upload.array('audio', 12), async (req, res) => {
     res.json(cur);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Wellenform eines Teils liefern (wird zwischengespeichert, da die Berechnung dauert).
+router.get('/:id/parts/:partId/peaks', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const part = (ep.parts || []).find((p) => p.id === req.params.partId);
+  if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
+
+  if (part.peaks?.length) return res.json({ peaks: part.peaks, duration: part.duration || 0 });
+
+  const local = path.join(paths.tmp, `wf-${ep.id}-${part.id}${path.extname(part.key)}`);
+  try {
+    const got = await downloadToFile(part.key, local);
+    if (!got) throw new Error('Aufnahme nicht abrufbar.');
+    const { peaks, duration } = await generatePeaks(got);
+
+    const cur = getEpisode(ep.id);
+    const target = (cur.parts || []).find((p) => p.id === part.id);
+    if (target) { target.peaks = peaks; target.duration = duration; saveEpisode(cur); }
+
+    res.json({ peaks, duration });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(local, { force: true });
+  }
+});
+
+// Bereiche aus einem Teil herausschneiden.
+router.post('/:id/parts/:partId/cut', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const part = (ep.parts || []).find((p) => p.id === req.params.partId);
+  if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
+  const cuts = req.body?.cuts;
+  if (!Array.isArray(cuts) || !cuts.length) return res.status(400).json({ error: 'Keine Bereiche angegeben' });
+
+  const local = path.join(paths.tmp, `cut-in-${ep.id}-${part.id}${path.extname(part.key)}`);
+  const outFile = path.join(paths.tmp, `cut-out-${ep.id}-${part.id}.mp3`);
+  try {
+    const got = await downloadToFile(part.key, local);
+    if (!got) throw new Error('Aufnahme nicht abrufbar.');
+    await cutRegions(got, outFile, cuts);
+
+    // Geschnittene Fassung als neuen Teil ablegen (alte Datei ersetzen).
+    const newKey = `parts/${ep.id}/${part.id}-${Date.now()}.mp3`;
+    await uploadFile(outFile, newKey, 'audio/mpeg');
+    await deleteKey(part.key);
+
+    const cur = getEpisode(ep.id);
+    const target = (cur.parts || []).find((p) => p.id === part.id);
+    if (target) {
+      target.key = newKey;
+      target.peaks = null;      // Kurve neu berechnen lassen
+      target.duration = 0;
+      target.size = fs.statSync(outFile).size;
+    }
+    cur.needsRebuild = true;
+    saveEpisode(cur);
+    res.json(cur);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(local, { force: true });
+    fs.rmSync(outFile, { force: true });
   }
 });
 
