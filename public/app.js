@@ -128,7 +128,13 @@ async function renderHome() {
       <p class="field-hint">Intro + Aufnahme + Outro werden zusammengefügt, transkribiert und ein Infotext-Vorschlag erstellt. Veröffentlicht wird erst nach deiner Freigabe.</p>
     </div>
 
-    <h2 class="section">Deine Folgen</h2>
+    <div class="list-head">
+      <h2 class="section" style="margin:0;">Deine Folgen</h2>
+      <div class="list-tools">
+        <button class="btn ghost small" id="sortBtn" title="Sortierung umschalten">↓ Neueste zuerst</button>
+        <button class="btn ghost small" id="foldBtn" title="Alle Jahre auf-/zuklappen">Alle aufklappen</button>
+      </div>
+    </div>
     <div id="episodeList"><p class="muted">Lade …</p></div>
   `;
 
@@ -238,27 +244,83 @@ async function submitEpisode() {
   }
 }
 
+// Sortierrichtung merken, damit sie beim nächsten Besuch noch stimmt.
+let episodesCache = [];
+let sortNeuesteZuerst = localStorage.getItem('sortAlt') !== '1';
+
 async function loadEpisodes() {
   const list = $('#episodeList');
   try {
-    const eps = await api('/api/episodes');
-    if (!eps.length) { list.innerHTML = '<p class="muted">Noch keine Folgen.</p>'; return; }
-    list.innerHTML = eps.map((e) => `
-      <div class="episode" data-id="${e.id}">
-        <div style="min-width:0;">
-          <h3>${escapeHtml(e.title)}</h3>
-          <div class="meta">${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex:none;">
-          <span class="badge ${e.status}">${STATUS_LABEL[e.status] || e.status}</span>
-          ${e.nummer ? `<span class="epnum" title="Interne Folgennummer">#${e.nummer}</span>` : ''}
-        </div>
-      </div>`).join('');
-    list.querySelectorAll('.episode').forEach((el) =>
-      el.addEventListener('click', () => go(`/episode/${encodeURIComponent(el.dataset.id)}`)));
+    episodesCache = await api('/api/episodes');
+    if (!episodesCache.length) { list.innerHTML = '<p class="muted">Noch keine Folgen.</p>'; return; }
+    zeichneFolgen();
+
+    $('#sortBtn').addEventListener('click', () => {
+      sortNeuesteZuerst = !sortNeuesteZuerst;
+      localStorage.setItem('sortAlt', sortNeuesteZuerst ? '0' : '1');
+      zeichneFolgen();
+    });
+
+    $('#foldBtn').addEventListener('click', () => {
+      const jahre = list.querySelectorAll('details.jahr');
+      const alleOffen = [...jahre].every((d) => d.open);
+      jahre.forEach((d) => { d.open = !alleOffen; });
+      $('#foldBtn').textContent = alleOffen ? 'Alle aufklappen' : 'Alle zuklappen';
+    });
   } catch (err) {
     list.innerHTML = `<p class="error">${err.message}</p>`;
   }
+}
+
+function zeichneFolgen() {
+  const list = $('#episodeList');
+  $('#sortBtn').textContent = sortNeuesteZuerst ? '↓ Neueste zuerst' : '↑ Älteste zuerst';
+
+  const datum = (e) => new Date(e.publishedAt || e.createdAt);
+  const sortiert = [...episodesCache].sort((a, b) =>
+    sortNeuesteZuerst ? datum(b) - datum(a) : datum(a) - datum(b));
+
+  // Nach Jahren gruppieren, Reihenfolge folgt der Sortierung.
+  const jahre = new Map();
+  for (const e of sortiert) {
+    const j = datum(e).getFullYear() || '—';
+    if (!jahre.has(j)) jahre.set(j, []);
+    jahre.get(j).push(e);
+  }
+
+  // Das zuerst gezeigte Jahr bleibt offen, die übrigen sind eingeklappt.
+  let erstes = true;
+  list.innerHTML = [...jahre.entries()].map(([jahr, folgen]) => {
+    const offen = erstes ? ' open' : '';
+    erstes = false;
+    return `
+      <details class="jahr"${offen}>
+        <summary>
+          <span class="jahr-zahl">${jahr}</span>
+          <span class="jahr-anzahl">${folgen.length} ${folgen.length === 1 ? 'Folge' : 'Folgen'}</span>
+        </summary>
+        <div class="jahr-inhalt">
+          ${folgen.map(folgeZeile).join('')}
+        </div>
+      </details>`;
+  }).join('');
+
+  list.querySelectorAll('.episode').forEach((el) =>
+    el.addEventListener('click', () => go(`/episode/${encodeURIComponent(el.dataset.id)}`)));
+}
+
+function folgeZeile(e) {
+  return `
+    <div class="episode" data-id="${e.id}">
+      <div style="min-width:0;">
+        <h3>${escapeHtml(e.title)}</h3>
+        <div class="meta">${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex:none;">
+        <span class="badge ${e.status}">${STATUS_LABEL[e.status] || e.status}</span>
+        ${e.nummer ? `<span class="epnum" title="Interne Folgennummer">#${e.nummer}</span>` : ''}
+      </div>
+    </div>`;
 }
 
 // ================= EPISODE-DETAIL / REVIEW =================

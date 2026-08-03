@@ -359,6 +359,69 @@ input[type="range"] { accent-color: var(--pink); }
 .badge.published  { background: var(--pink-soft); color: #ff7ab8; border-color: rgba(255,45,143,.35); }
 .badge.error      { background: rgba(255,77,109,.14); color: var(--danger); border-color: rgba(255,77,109,.35); }
 
+/* ---------- Kopfzeile der Folgenliste ---------- */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 24px 4px 12px;
+}
+.list-tools { display: flex; gap: 8px; }
+
+/* ---------- Jahres-Gruppen ---------- */
+details.jahr {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+details.jahr > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-weight: 600;
+  transition: background .12s;
+}
+details.jahr > summary::-webkit-details-marker { display: none; }
+details.jahr > summary:hover { background: var(--surface-2); }
+
+/* Pfeil, dreht sich beim Aufklappen */
+details.jahr > summary::before {
+  content: '▸';
+  color: var(--pink);
+  font-size: .9rem;
+  transition: transform .15s ease;
+}
+details.jahr[open] > summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  details.jahr > summary::before { transition: none; }
+}
+
+.jahr-zahl {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.jahr-anzahl {
+  margin-left: auto;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.jahr-inhalt { padding: 4px 10px 10px; }
+.jahr-inhalt .episode:last-child { margin-bottom: 0; }
+
 /* Interne Folgennummer – nur in der eigenen Übersicht, nicht im RSS-Feed */
 .epnum {
   font-size: .78rem;
