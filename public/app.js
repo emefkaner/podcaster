@@ -295,16 +295,29 @@ async function submitEpisode() {
   try {
     // Falls gewünscht: Rauschunterdrückung und Pausenkürzung hier rechnen.
     const quellen = files.length ? [...files] : [new File([recordedBlob], 'aufnahme.webm')];
+    let lokalGeschafft = false;
+
     if (lokal) {
-      let nr = 0;
-      for (const datei of quellen) {
-        nr++;
-        const fertig = await localAudio.lokalAufbereiten(datei, { enhance, trimSilence },
-          (text, pct) => setzeBalken(pct, `Teil ${nr} von ${quellen.length}: ${text}`));
-        fd.append('audio', fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3');
+      try {
+        const fertige = [];
+        let nr = 0;
+        for (const datei of quellen) {
+          nr++;
+          const fertig = await localAudio.lokalAufbereiten(datei, { enhance, trimSilence },
+            (text, pct) => setzeBalken(pct, `Teil ${nr} von ${quellen.length}: ${text}`));
+          fertige.push([fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3']);
+        }
+        fertige.forEach(([blob, name]) => fd.append('audio', blob, name));
+        fd.append('lokalBearbeitet', 'true');
+        lokalGeschafft = true;
+      } catch (e) {
+        // Nicht abbrechen – der Server kann es auch, nur langsamer.
+        console.warn('Lokale Bearbeitung nicht möglich:', e);
+        toast('Bearbeitung auf dem Gerät klappte nicht — der Server übernimmt.', 4000);
       }
-      fd.append('lokalBearbeitet', 'true');
-    } else {
+    }
+
+    if (!lokalGeschafft) {
       for (const datei of quellen) fd.append('audio', datei, datei.name);
     }
 

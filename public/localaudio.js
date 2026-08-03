@@ -12,7 +12,9 @@
 // und danach vom Browser zwischengespeichert.
 
 const CDN = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-const WRAPPER = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
+const WRAPPER_DIR = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
+const WRAPPER = `${WRAPPER_DIR}/ffmpeg.js`;
+const WORKER = `${WRAPPER_DIR}/814.ffmpeg.js`; // internes Arbeitsskript der Bibliothek
 const UTIL = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js';
 
 let ffmpegInstanz = null;
@@ -50,9 +52,13 @@ async function ffmpegHolen(onStatus) {
     const { toBlobURL } = window.FFmpegUtil;
     const ffmpeg = new FFmpeg();
 
+    // Alle Bestandteile zuerst herunterladen und als lokale Adressen einbinden.
+    // Der Browser verweigert sonst das Starten des Arbeitsskripts, weil es von
+    // einer fremden Adresse stammt.
     await ffmpeg.load({
       coreURL: await toBlobURL(`${CDN}/ffmpeg-core.js`, 'text/javascript'),
       wasmURL: await toBlobURL(`${CDN}/ffmpeg-core.wasm`, 'application/wasm'),
+      classWorkerURL: await toBlobURL(WORKER, 'text/javascript'),
     });
 
     ffmpegInstanz = ffmpeg;
