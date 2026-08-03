@@ -1,11 +1,11 @@
 {
-  "name": "Podcast Studio",
-  "short_name": "Podcast",
-  "description": "Podcast aufnehmen, optimieren und veröffentlichen.",
+  "name": "podcast3r",
+  "short_name": "podcast3r",
+  "description": "Podcast aufnehmen, veredeln und veröffentlichen.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#141317",
+  "theme_color": "#141317",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]

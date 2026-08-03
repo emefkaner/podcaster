@@ -82,7 +82,7 @@ menu.querySelectorAll('.menu-item').forEach((item) => {
 
 // ================= START / AUFNEHMEN =================
 async function renderHome() {
-  pageTitle.textContent = 'Podcast Studio';
+  pageTitle.textContent = 'podcast3r';
   view.innerHTML = `
     <div class="card recorder">
       <div class="timer" id="timer">00:00</div>

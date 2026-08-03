@@ -78,7 +78,7 @@ initStore()
   .catch((e) => console.error('Start-Initialisierung fehlgeschlagen:', e.message))
   .finally(() => {
     app.listen(config.port, () => {
-      console.log(`Podcast-App läuft auf Port ${config.port}`);
+      console.log(`podcast3r läuft auf Port ${config.port}`);
       console.log(`Öffentliche URL:  ${config.publicUrl}`);
       console.log(`RSS-Feed:         ${config.publicUrl}/feed.xml`);
       console.log(`Speicher:         ${storageEnabled() ? 'Cloudflare R2' : 'lokal (DATA_DIR)'}`);

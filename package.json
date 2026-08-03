@@ -1,7 +1,7 @@
 {
-  "name": "podcast-auto-publish",
+  "name": "podcast3r",
   "version": "1.0.0",
-  "description": "Mobile-first Web-App: Podcast aufnehmen/hochladen, Intro+Outro automatisch anfügen, KI-Infotext erzeugen und nach Bestätigung in den eigenen RSS-Feed (Spotify) veröffentlichen.",
+  "description": "Podcast aufnehmen, veredeln und veroeffentlichen - mobil bedienbar.",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

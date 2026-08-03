@@ -1,4 +1,4 @@
-# 🎙️ Podcast Studio
+# 🎙️ podcast3r
 
 Eine kleine, mobil-optimierte Web-App, mit der du **überall vom Handy** einen Podcast
 aufnehmen oder eine Audiodatei hochladen kannst. Die App:
