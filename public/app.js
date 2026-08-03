@@ -46,11 +46,38 @@ function render() {
 }
 
 // ---------- Menü ----------
-$('#menuBtn').addEventListener('click', async () => {
-  const choice = prompt('Menü:\n1 = Start / Aufnehmen\n2 = Einstellungen\n3 = Abmelden\n\nZahl eingeben:');
-  if (choice === '1') go('/');
-  else if (choice === '2') go('/settings');
-  else if (choice === '3') { await fetch('/logout', { method: 'POST' }); window.location.href = '/login'; }
+const menu = $('#menu'), menuBtn = $('#menuBtn');
+
+function closeMenu() {
+  menu.classList.add('hidden');
+  menuBtn.setAttribute('aria-expanded', 'false');
+}
+
+menuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = menu.classList.toggle('hidden') === false;
+  menuBtn.setAttribute('aria-expanded', String(open));
+});
+
+// Klick daneben oder Escape schließt das Menü.
+document.addEventListener('click', (e) => {
+  if (!menu.classList.contains('hidden') && !menu.contains(e.target)) closeMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
+menu.querySelectorAll('.menu-item').forEach((item) => {
+  item.addEventListener('click', async () => {
+    const target = item.dataset.go;
+    closeMenu();
+    if (target === 'logout') {
+      await fetch('/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } else if (target === 'feed') {
+      window.open('/feed.xml', '_blank');
+    } else {
+      go(target);
+    }
+  });
 });
 
 // ================= START / AUFNEHMEN =================

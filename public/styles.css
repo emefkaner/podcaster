@@ -63,6 +63,39 @@ header.topbar h1 { font-size: 1.15rem; margin: 0; }
 header.topbar .logo { font-size: 1.4rem; }
 .topbar-left { display: flex; align-items: center; gap: 10px; }
 
+/* ---- Menü ---- */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  padding: 6px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  padding: 13px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-2); outline: none; }
+.menu-item.danger { color: var(--danger); }
+
 /* ---- Cards ---- */
 .card {
   background: var(--surface);

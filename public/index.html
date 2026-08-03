@@ -16,7 +16,15 @@
       <span class="logo">🎙️</span>
       <h1 id="pageTitle">Podcast Studio</h1>
     </div>
-    <button id="menuBtn" class="btn ghost small">☰</button>
+    <div class="menu-wrap">
+      <button id="menuBtn" class="btn ghost small" aria-haspopup="true" aria-expanded="false" aria-label="Menü">☰</button>
+      <nav id="menu" class="menu hidden" role="menu">
+        <button class="menu-item" data-go="/" role="menuitem">🎙️ Aufnehmen</button>
+        <button class="menu-item" data-go="/settings" role="menuitem">⚙️ Einstellungen</button>
+        <button class="menu-item" data-go="feed" role="menuitem">📡 RSS-Feed ansehen</button>
+        <button class="menu-item danger" data-go="logout" role="menuitem">↩️ Abmelden</button>
+      </nav>
+    </div>
   </header>
 
   <main class="app" id="view"><!-- wird per JS gefüllt --></main>
