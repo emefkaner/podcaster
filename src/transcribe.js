@@ -9,6 +9,20 @@ import { toTranscriptionAudio } from './audio.js';
 // Bevorzugt Google Gemini (kostenloser Kontingentbereich, gut bei Deutsch und
 // Eigennamen). Fällt auf OpenAI Whisper zurück, wenn nur dieser Schlüssel gesetzt ist.
 // Ohne Schlüssel wird "" zurückgegeben – die App funktioniert dann ohne Transkript.
+// Mehrere Aufnahme-Teile nacheinander transkribieren und zusammenfügen.
+export async function transcribeAll(files) {
+  const parts = [];
+  for (const f of files) {
+    try {
+      const text = await transcribe(f);
+      if (text) parts.push(text);
+    } catch (err) {
+      console.error('Transkription eines Teils fehlgeschlagen:', err.message);
+    }
+  }
+  return parts.join('\n\n');
+}
+
 export async function transcribe(file) {
   if (!config.geminiKey && !config.openaiKey) return '';
 

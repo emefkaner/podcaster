@@ -7,7 +7,7 @@ import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
 import { listEpisodes, getEpisode, saveEpisode, deleteEpisode, getSettings } from '../store.js';
 import { buildEpisode } from '../audio.js';
-import { transcribe } from '../transcribe.js';
+import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
 import { config } from '../config.js';
@@ -37,9 +37,11 @@ router.get('/:id', (req, res) => {
   res.json(ep);
 });
 
-// Neue Aufnahme/Upload entgegennehmen und Verarbeitung im Hintergrund starten.
-router.post('/', upload.single('audio'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Keine Audiodatei erhalten' });
+// Neue Folge anlegen. Es dürfen gleich mehrere Aufnahme-Teile mitkommen –
+// eine Folge besteht oft aus Vorgespräch und Spoilerteil.
+router.post('/', upload.array('audio', 12), async (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Keine Audiodatei erhalten' });
 
   const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const episode = {
@@ -48,14 +50,20 @@ router.post('/', upload.single('audio'), async (req, res) => {
     description: '',
     transcript: '',
     status: 'processing', // processing -> draft -> published
-    rawTmp: req.file.filename,   // ephemerer Roh-Upload (nur während Verarbeitung)
-    audioKey: '',                // R2-/Medien-Key der fertigen MP3
-    audioUrl: '',                // öffentliche URL der fertigen MP3
+    parts: [],            // Aufnahme-Teile in Abspielreihenfolge
+    audioKey: '',         // fertige MP3 (Intro + Teile + Outro)
+    audioUrl: '',
     duration: 0,
     size: 0,
+    needsRebuild: false,  // true, sobald sich die Teile nach dem Bau ändern
     enhance: {
       enabled: req.body.enhance === 'true' || req.body.enhance === '1',
       strength: Math.min(100, Math.max(0, Number(req.body.strength) || 60)),
+    },
+    // Lange Sprechpausen automatisch kürzen.
+    trimSilence: {
+      enabled: req.body.trimSilence === 'true' || req.body.trimSilence === '1',
+      seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSeconds) || 2)),
     },
     error: '',
     createdAt: new Date().toISOString(),
@@ -63,13 +71,91 @@ router.post('/', upload.single('audio'), async (req, res) => {
   };
   saveEpisode(episode);
 
-  processEpisode(id).catch((err) => {
+  try {
+    await storeParts(id, files);
+  } catch (e) {
+    saveEpisode({ ...getEpisode(id), status: 'error', error: e.message });
+    return res.status(500).json({ error: e.message });
+  }
+
+  buildAndAnalyse(id).catch((err) => {
     console.error('Verarbeitung fehlgeschlagen:', err);
     const ep = getEpisode(id);
     if (ep) saveEpisode({ ...ep, status: 'error', error: err.message });
   });
 
-  res.status(202).json(episode);
+  res.status(202).json(getEpisode(id));
+});
+
+// Weitere Aufnahme-Teile zu einer bestehenden Folge hinzufügen.
+router.post('/:id/parts', upload.array('audio', 12), async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Keine Audiodatei erhalten' });
+
+  try {
+    await storeParts(ep.id, files);
+    const cur = getEpisode(ep.id);
+    cur.needsRebuild = true;
+    saveEpisode(cur);
+    res.json(cur);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reihenfolge der Teile ändern (Liste von Teil-IDs in gewünschter Reihenfolge).
+router.put('/:id/parts/order', (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const order = req.body?.order;
+  if (!Array.isArray(order)) return res.status(400).json({ error: 'Reihenfolge fehlt' });
+
+  const byId = new Map((ep.parts || []).map((p) => [p.id, p]));
+  const next = order.map((pid) => byId.get(pid)).filter(Boolean);
+  if (next.length !== (ep.parts || []).length) return res.status(400).json({ error: 'Reihenfolge unvollständig' });
+
+  ep.parts = next;
+  ep.needsRebuild = true;
+  saveEpisode(ep);
+  res.json(ep);
+});
+
+// Einen Teil entfernen.
+router.delete('/:id/parts/:partId', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const part = (ep.parts || []).find((p) => p.id === req.params.partId);
+  if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
+
+  await deleteKey(part.key);
+  ep.parts = ep.parts.filter((p) => p.id !== part.id);
+  ep.needsRebuild = true;
+  saveEpisode(ep);
+  res.json(ep);
+});
+
+// Folge (neu) zusammenbauen – nach Änderungen an den Teilen.
+router.post('/:id/build', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (!(ep.parts || []).length) return res.status(400).json({ error: 'Keine Aufnahme-Teile vorhanden' });
+  if (ep.status === 'processing') return res.status(409).json({ error: 'Wird bereits verarbeitet' });
+
+  // Text nur neu erzeugen, wenn ausdrücklich gewünscht (spart Zeit und Kosten).
+  const withText = req.body?.withText !== false;
+  ep.status = 'processing';
+  ep.error = '';
+  saveEpisode(ep);
+
+  buildAndAnalyse(ep.id, { withText }).catch((err) => {
+    console.error('Zusammenbau fehlgeschlagen:', err);
+    const cur = getEpisode(ep.id);
+    if (cur) saveEpisode({ ...cur, status: 'error', error: err.message });
+  });
+
+  res.status(202).json(getEpisode(ep.id));
 });
 
 // Eigenes Bild für eine Folge hochladen (überschreibt das Podcast-Cover in den Apps).
@@ -187,6 +273,21 @@ router.put('/:id', (req, res) => {
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
   if (typeof req.body.title === 'string') ep.title = req.body.title.trim();
   if (typeof req.body.description === 'string') ep.description = req.body.description;
+  // Klangbearbeitung anpassen – wirkt beim nächsten Zusammenbauen.
+  if (req.body.enhance && typeof req.body.enhance === 'object') {
+    ep.enhance = {
+      enabled: Boolean(req.body.enhance.enabled),
+      strength: Math.min(100, Math.max(0, Number(req.body.enhance.strength) || 60)),
+    };
+    ep.needsRebuild = true;
+  }
+  if (req.body.trimSilence && typeof req.body.trimSilence === 'object') {
+    ep.trimSilence = {
+      enabled: Boolean(req.body.trimSilence.enabled),
+      seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSilence.seconds) || 2)),
+    };
+    ep.needsRebuild = true;
+  }
   saveEpisode(ep);
   res.json(ep);
 });
@@ -259,70 +360,107 @@ router.delete('/:id', async (req, res) => {
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
   if (ep.audioKey) await deleteKey(ep.audioKey);
   if (ep.imageKey) await deleteKey(ep.imageKey);
-  if (ep.rawTmp) fs.rmSync(path.join(paths.tmp, ep.rawTmp), { force: true });
+  for (const part of ep.parts || []) await deleteKey(part.key);
+  for (const c of ep.artworkCandidates || []) await deleteKey(c.key);
   deleteEpisode(ep.id);
   res.json({ ok: true });
 });
 
-// ---- Die eigentliche Pipeline ----
-async function processEpisode(id) {
+// ---- Aufnahme-Teile dauerhaft ablegen ----
+// Die Rohaufnahmen bleiben erhalten, damit die Folge nach Umsortieren oder
+// Nachreichen weiterer Teile jederzeit neu zusammengebaut werden kann.
+async function storeParts(episodeId, files) {
+  for (const f of files) {
+    const partId = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const ext = path.extname(f.originalname) || path.extname(f.filename) || '.webm';
+    const key = `parts/${episodeId}/${partId}${ext}`;
+    try {
+      await uploadFile(f.path, key, f.mimetype || 'application/octet-stream');
+      const ep = getEpisode(episodeId);
+      ep.parts = [...(ep.parts || []), {
+        id: partId,
+        key,
+        name: f.originalname || `Teil ${(ep.parts || []).length + 1}`,
+        size: f.size || 0,
+      }];
+      saveEpisode(ep);
+    } finally {
+      fs.rmSync(f.path, { force: true });
+    }
+  }
+}
+
+// ---- Zusammenbauen, transkribieren, Text vorschlagen ----
+async function buildAndAnalyse(id, { withText = true } = {}) {
   const settings = getSettings();
   let ep = getEpisode(id);
   if (!ep) return;
 
-  const rawPath = path.join(paths.tmp, ep.rawTmp);
-
-  // Intro/Outro bei Bedarf aus dem Speicher in den tmp-Ordner holen.
-  let introPath = null, outroPath = null;
-  if (settings.intro) {
-    introPath = await downloadToFile(`assets/${settings.intro}`, path.join(paths.tmp, `intro-${id}${path.extname(settings.intro)}`));
-  }
-  if (settings.outro) {
-    outroPath = await downloadToFile(`assets/${settings.outro}`, path.join(paths.tmp, `outro-${id}${path.extname(settings.outro)}`));
-  }
-
-  const outPath = path.join(paths.tmp, `${id}.mp3`);
-
-  // 1) Intro + Aufnahme + Outro zusammenfügen (inkl. optionaler KI-Optimierung).
-  const { duration, size } = await buildEpisode({
-    intro: introPath, main: rawPath, outro: outroPath, outFile: outPath, enhance: ep.enhance,
-  });
-
-  // 2) Fertige MP3 in den persistenten Speicher (R2 oder lokal) hochladen.
-  const audioKey = `episodes/${id}.mp3`;
-  const audioUrl = await uploadFile(outPath, audioKey, 'audio/mpeg');
-
-  ep = getEpisode(id);
-  ep.audioKey = audioKey;
-  ep.audioUrl = audioUrl;
-  ep.duration = duration;
-  ep.size = size;
-  saveEpisode(ep);
-
-  // 3) Transkribieren (nur die Rohaufnahme, ohne Intro/Outro).
-  let transcript = '';
+  const tmpFiles = [];
   try {
-    transcript = await transcribe(rawPath);
-  } catch (err) {
-    console.error('Transkription fehlgeschlagen:', err.message);
+    // Aufnahme-Teile in ihrer Reihenfolge in den Arbeitsordner holen.
+    const partPaths = [];
+    for (const part of ep.parts || []) {
+      const local = path.join(paths.tmp, `part-${id}-${part.id}${path.extname(part.key)}`);
+      const got = await downloadToFile(part.key, local);
+      if (got) { partPaths.push(got); tmpFiles.push(got); }
+    }
+    if (!partPaths.length) throw new Error('Keine Aufnahme-Teile gefunden.');
+
+    // Intro/Outro bei Bedarf holen.
+    let introPath = null, outroPath = null;
+    if (settings.intro) {
+      introPath = await downloadToFile(`assets/${settings.intro}`, path.join(paths.tmp, `intro-${id}${path.extname(settings.intro)}`));
+      if (introPath) tmpFiles.push(introPath);
+    }
+    if (settings.outro) {
+      outroPath = await downloadToFile(`assets/${settings.outro}`, path.join(paths.tmp, `outro-${id}${path.extname(settings.outro)}`));
+      if (outroPath) tmpFiles.push(outroPath);
+    }
+
+    // 1) Intro + alle Teile + Outro zusammenfügen (inkl. optionaler Optimierung).
+    const outPath = path.join(paths.tmp, `${id}.mp3`);
+    tmpFiles.push(outPath);
+    const { duration, size } = await buildEpisode({
+      intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
+      enhance: ep.enhance, trimSilence: ep.trimSilence,
+    });
+
+    // 2) Fertige MP3 in den dauerhaften Speicher legen.
+    const audioKey = `episodes/${id}.mp3`;
+    const audioUrl = await uploadFile(outPath, audioKey, 'audio/mpeg');
+
+    ep = getEpisode(id);
+    ep.audioKey = audioKey;
+    ep.audioUrl = `${audioUrl}${audioUrl.includes('?') ? '&' : '?'}v=${Date.now()}`; // Zwischenspeicher umgehen
+    ep.duration = duration;
+    ep.size = size;
+    ep.needsRebuild = false;
+    saveEpisode(ep);
+
+    // 3) Transkript und Textvorschlag – nur wenn gewünscht.
+    if (withText) {
+      let transcript = '';
+      try {
+        transcript = await transcribeAll(partPaths);
+      } catch (err) {
+        console.error('Transkription fehlgeschlagen:', err.message);
+      }
+      const description = await generateDescription({ transcript, title: getEpisode(id).title });
+      ep = getEpisode(id);
+      ep.transcript = transcript;
+      // Einen bereits überarbeiteten Text nicht überschreiben.
+      if (!ep.description?.trim()) ep.description = description;
+      else ep.descriptionSuggestion = description;
+      saveEpisode(ep);
+    }
+
+    ep = getEpisode(id);
+    ep.status = 'draft';
+    saveEpisode(ep);
+  } finally {
+    for (const f of tmpFiles) fs.rmSync(f, { force: true });
   }
-
-  // 4) Infotext-Vorschlag generieren.
-  const description = await generateDescription({ transcript, title: ep.title });
-
-  ep = getEpisode(id);
-  ep.transcript = transcript;
-  ep.description = description;
-  ep.status = 'draft';
-  saveEpisode(ep);
-
-  // Aufräumen: ephemere Arbeitsdateien entfernen.
-  for (const f of [rawPath, outPath, introPath, outroPath]) {
-    if (f) fs.rmSync(f, { force: true });
-  }
-  ep = getEpisode(id);
-  ep.rawTmp = '';
-  saveEpisode(ep);
 }
 
 export default router;

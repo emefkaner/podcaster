@@ -66,9 +66,9 @@ async function renderHome() {
     <div class="divider"><span>oder</span></div>
 
     <div class="card">
-      <label for="fileInput">Audiodatei hochladen</label>
-      <input type="file" id="fileInput" accept="audio/*,video/*" />
-      <p class="field-hint">z. B. der fertige Schnitt aus Riverside (mp3/wav/m4a).</p>
+      <label for="fileInput">Audiodateien hochladen</label>
+      <input type="file" id="fileInput" accept="audio/*,video/*" multiple />
+      <p class="field-hint">Mehrere Teile auf einmal möglich — z. B. Vorgespräch und Spoilerteil. Reihenfolge kannst du danach ändern.</p>
     </div>
 
     <div class="card">
@@ -83,6 +83,16 @@ async function renderHome() {
         <label for="strength">Stärke: <span id="strengthVal">60</span>%</label>
         <input type="range" id="strength" min="0" max="100" value="60" style="width:100%;" />
         <p class="field-hint">Dezent (links) bis stark (rechts). Für Auto/Restaurant eher 60–85%.</p>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+        <input type="checkbox" id="trimChk" style="width:auto;" />
+        Lange Pausen automatisch kürzen
+      </label>
+      <div id="trimWrap" style="opacity:.4;">
+        <label for="trimSec">Ab <span id="trimVal">2,0</span> Sekunden Stille</label>
+        <input type="range" id="trimSec" min="5" max="60" value="20" step="5" style="width:100%;" disabled />
+        <p class="field-hint">Kürzt lange Denk- und Umschaltpausen, lässt Atempausen stehen.</p>
       </div>
 
       <button id="submitBtn" class="btn primary" disabled style="margin-top:16px;">
@@ -153,6 +163,14 @@ function setupUpload() {
   strength.addEventListener('input', () => { strengthVal.textContent = strength.value; });
   chk.addEventListener('change', () => { wrap.style.opacity = chk.checked ? '1' : '0.4'; strength.disabled = !chk.checked; });
 
+  const trimChk = $('#trimChk'), trimSec = $('#trimSec'), trimVal = $('#trimVal'), trimWrap = $('#trimWrap');
+  const showTrim = () => { trimVal.textContent = (trimSec.value / 10).toFixed(1).replace('.', ','); };
+  trimSec.addEventListener('input', showTrim);
+  trimChk.addEventListener('change', () => {
+    trimWrap.style.opacity = trimChk.checked ? '1' : '0.4';
+    trimSec.disabled = !trimChk.checked;
+  });
+
   $('#submitBtn').addEventListener('click', submitEpisode);
 }
 
@@ -164,16 +182,21 @@ function updateSubmit() {
 
 async function submitEpisode() {
   const btn = $('#submitBtn');
-  const file = $('#fileInput').files[0];
-  const blob = file || recordedBlob;
-  if (!blob) return;
+  const files = $('#fileInput').files;
+  if (!files.length && !recordedBlob) return;
 
   const fd = new FormData();
-  const name = file ? file.name : 'aufnahme.webm';
-  fd.append('audio', blob, name);
+  // Alle ausgewählten Dateien als Teile mitschicken – sonst die Aufnahme.
+  if (files.length) {
+    for (const f of files) fd.append('audio', f, f.name);
+  } else {
+    fd.append('audio', recordedBlob, 'aufnahme.webm');
+  }
   fd.append('title', $('#titleInput').value.trim());
   fd.append('enhance', $('#enhanceChk').checked ? 'true' : 'false');
   fd.append('strength', $('#strength').value);
+  fd.append('trimSilence', $('#trimChk').checked ? 'true' : 'false');
+  fd.append('trimSeconds', String($('#trimSec').value / 10));
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Lädt hoch …';
@@ -263,6 +286,18 @@ async function renderEpisode(id) {
         <button class="btn ghost small" id="regenBtn" title="Neuen KI-Vorschlag">↻ Text</button>
       </div>
 
+      <label style="margin-top:20px;">Aufnahme-Teile (Reihenfolge = Abspielreihenfolge)</label>
+      <div id="partList">${renderParts(ep)}</div>
+      <input type="file" id="addParts" accept="audio/*,video/*" multiple style="margin-top:8px;" />
+      <button class="btn ghost small" id="addPartsBtn" style="margin-top:8px;">Teile hinzufügen</button>
+      ${ep.needsRebuild
+        ? `<div style="margin-top:12px;padding:12px;background:var(--warn-soft,#3a2f14);border:1px solid var(--border);border-radius:10px;">
+             <b>Änderungen noch nicht übernommen.</b>
+             <p class="field-hint" style="margin:4px 0 8px;">Die fertige Folge unten entspricht noch dem alten Stand.</p>
+             <button class="btn primary" id="rebuildBtn">Folge neu zusammenbauen</button>
+           </div>`
+        : ''}
+
       <label style="margin-top:18px;">Folgen-Bild ${ep.imageUrl ? '' : '<span class="muted">(ohne: Podcast-Cover wird verwendet)</span>'}</label>
       ${ep.imageUrl ? `<img src="${escapeAttr(ep.imageUrl)}" alt="Folgen-Bild" style="width:120px;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:10px;" />` : ''}
 
@@ -324,6 +359,8 @@ async function renderEpisode(id) {
     });
     toast('Gespeichert.');
   });
+
+  wireParts(id, ep);
 
   // Beim Öffnen bereits vorhandene Vorschläge anzeigen.
   if (ep.artworkCandidates?.length) showCandidates(id, ep.artworkCandidates);
@@ -407,6 +444,71 @@ async function renderEpisode(id) {
   });
 
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
+}
+
+// Liste der Aufnahme-Teile mit Sortier- und Löschknöpfen.
+function renderParts(ep) {
+  const parts = ep.parts || [];
+  if (!parts.length) return '<p class="muted">Keine Teile vorhanden.</p>';
+  return parts.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--bg);">
+      <span class="muted" style="font-variant-numeric:tabular-nums;">${i + 1}.</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem;">${escapeHtml(p.name || 'Teil')}</span>
+      <button class="btn ghost small partUp" data-id="${escapeAttr(p.id)}" ${i === 0 ? 'disabled' : ''} title="nach oben">↑</button>
+      <button class="btn ghost small partDown" data-id="${escapeAttr(p.id)}" ${i === parts.length - 1 ? 'disabled' : ''} title="nach unten">↓</button>
+      <button class="btn ghost small partDel" data-id="${escapeAttr(p.id)}" title="entfernen" style="color:var(--danger);">×</button>
+    </div>`).join('');
+}
+
+// Verdrahtet die Knöpfe der Teile-Liste.
+function wireParts(id, ep) {
+  const move = async (partId, delta) => {
+    const ids = (ep.parts || []).map((p) => p.id);
+    const from = ids.indexOf(partId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    await api(`/api/episodes/${encodeURIComponent(id)}/parts/order`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: ids }),
+    });
+    renderEpisode(id);
+  };
+
+  view.querySelectorAll('.partUp').forEach((b) => b.addEventListener('click', () => move(b.dataset.id, -1)));
+  view.querySelectorAll('.partDown').forEach((b) => b.addEventListener('click', () => move(b.dataset.id, 1)));
+  view.querySelectorAll('.partDel').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Diesen Aufnahme-Teil entfernen?')) return;
+    await api(`/api/episodes/${encodeURIComponent(id)}/parts/${encodeURIComponent(b.dataset.id)}`, { method: 'DELETE' });
+    renderEpisode(id);
+  }));
+
+  $('#addPartsBtn')?.addEventListener('click', async () => {
+    const files = $('#addParts').files;
+    if (!files.length) return toast('Bitte zuerst Dateien auswählen.');
+    const btn = $('#addPartsBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
+    const fd = new FormData();
+    for (const f of files) fd.append('audio', f, f.name);
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}/parts`, { method: 'POST', body: fd });
+      toast('Teile hinzugefügt.');
+      renderEpisode(id);
+    } catch (e) {
+      toast('Fehler: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Teile hinzufügen';
+    }
+  });
+
+  $('#rebuildBtn')?.addEventListener('click', async () => {
+    const withText = confirm('Auch Transkript und Textvorschlag neu erzeugen?\n\nOK = ja (dauert länger)\nAbbrechen = nur Audio neu zusammenbauen');
+    await api(`/api/episodes/${encodeURIComponent(id)}/build`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ withText }),
+    });
+    toast('Wird neu zusammengebaut …');
+    renderEpisode(id);
+  });
 }
 
 // Zeigt die generierten Cover-Vorschläge zur Auswahl an.

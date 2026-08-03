@@ -53,19 +53,42 @@ function enhanceChain(strength) {
   // 5) Lautstärke gleichmäßiger machen (leicht komprimieren).
   parts.push('acompressor=threshold=-18dB:ratio=3:attack=20:release=250');
 
+  return parts.join(',');
+}
+
+// Kürzt lange Sprechpausen automatisch. Kurze Atempausen bleiben erhalten –
+// gekappt wird erst ab der eingestellten Länge, und es bleibt bewusst ein Rest
+// stehen, damit die Folge nicht gehetzt klingt.
+function silenceChain(seconds) {
+  const stop = Math.max(0.5, Number(seconds) || 2);
+  const keep = 0.4; // so viel Stille bleibt stehen
+  return [
+    `silenceremove=stop_periods=-1:stop_duration=${stop}:stop_threshold=-38dB:stop_silence=${keep}`,
+  ].join(',');
+}
+
+// Baut die vollständige Filterkette für eine Aufnahme.
+function mainChain({ enhance, trimSilence }) {
+  const parts = [];
+  if (enhance?.enabled) parts.push(enhanceChain(enhance.strength));
+  if (trimSilence?.enabled) parts.push(silenceChain(trimSilence.seconds));
+
   // 6) Auf Podcast-Standard-Lautheit normalisieren (-16 LUFS).
   parts.push('loudnorm=I=-16:TP=-1.5:LRA=11');
 
   return parts.join(',');
 }
 
-// Fügt (optional) Intro + Hauptaufnahme + (optional) Outro zu einer MP3 zusammen.
-// Alle Segmente werden neu kodiert und normalisiert. Auf die Hauptaufnahme wird
+// Fügt (optional) Intro + alle Aufnahme-Teile in ihrer Reihenfolge + (optional)
+// Outro zu einer MP3 zusammen. Eine Folge besteht oft aus mehreren Aufnahmen –
+// etwa Vorgespräch und Spoilerteil, manchmal zusätzlich Wiederholungen.
+// Alle Segmente werden neu kodiert und normalisiert. Auf die Aufnahmen wird
 // – falls gewünscht – die KI-/DSP-Sprachoptimierung angewendet.
-export function buildEpisode({ intro, main, outro, outFile, enhance }) {
+export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence }) {
+  const mains = (Array.isArray(main) ? main : [main]).filter(Boolean);
   const ordered = [
     { file: intro, isMain: false },
-    { file: main, isMain: true },
+    ...mains.map((file) => ({ file, isMain: true })),
     { file: outro, isMain: false },
   ].filter((seg) => seg.file && fs.existsSync(seg.file));
 
@@ -76,10 +99,9 @@ export function buildEpisode({ intro, main, outro, outFile, enhance }) {
     const filterParts = [];
     ordered.forEach((seg, i) => {
       const base = `aformat=sample_rates=${SAMPLE_RATE}:channel_layouts=stereo,aresample=${SAMPLE_RATE}`;
-      // Optimierung nur auf die eigentliche Aufnahme, nicht auf Intro/Outro.
-      const chain = seg.isMain && enhance?.enabled
-        ? `${enhanceChain(enhance.strength)},${base}`
-        : base;
+      // Optimierung und Pausenkürzung nur auf die Aufnahmen, nicht auf Intro/Outro.
+      const processing = seg.isMain ? mainChain({ enhance, trimSilence }) : '';
+      const chain = processing ? `${processing},${base}` : base;
       filterParts.push(`[${i}:a]${chain}[a${i}]`);
     });
     const concatInputs = ordered.map((_, i) => `[a${i}]`).join('');
