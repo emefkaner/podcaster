@@ -264,8 +264,8 @@ async function renderEpisode(id) {
 
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;">
         <b style="font-size:.95rem;">🎨 Cover generieren</b>
-        <p class="field-hint" style="margin-top:4px;">Beschreib kurz, was am Ausgangsbild anders sein soll — z. B. „alle tragen Spider-Man-Masken" oder „Spartanerhelme, Zyklop im Hintergrund".</p>
-        <textarea id="artPrompt" style="min-height:70px;" placeholder="alle tragen Spider-Man-Masken, Netze im Hintergrund">${escapeHtml(ep.artworkPrompt || '')}</textarea>
+        <p class="field-hint" style="margin-top:4px;">Gesichter, Anordnung und der Schriftzug bleiben gleich. Beschreib nur <b>Kleidung und Hintergrund</b> — z. B. „Spider-Man-Anzüge, Netze und Hochhäuser im Hintergrund" oder „Spartaner-Rüstungen mit Helm, Zyklop im Hintergrund".</p>
+        <textarea id="artPrompt" style="min-height:70px;" placeholder="Spartaner-Rüstungen mit Helmen, antikes Meer und Zyklop im Hintergrund">${escapeHtml(ep.artworkPrompt || '')}</textarea>
         <button class="btn" id="artBtn" style="margin-top:10px;">3 Vorschläge generieren</button>
         <p class="field-hint">Kostet ein paar Cent pro Durchgang.</p>
         <div id="artResult"></div>
@@ -490,9 +490,12 @@ async function renderSettings() {
       <input type="file" id="baseFiles" accept="image/*" multiple />
       <button class="btn ghost small" id="baseUploadBtn" style="margin-top:8px;">Ausgangsbilder hinzufügen</button>
 
-      <label style="margin-top:18px;">Stil-Vorgabe (gilt für alle Folgen)</label>
+      <label style="margin-top:18px;">Schriftzug oben auf jedem Cover</label>
+      <input type="text" id="s_coverHeadline" value="${escapeAttr(s.coverHeadline || '')}" />
+
+      <label style="margin-top:14px;">Stil-Vorgabe (gilt für alle Folgen)</label>
       <textarea id="s_imageStyle" style="min-height:90px;">${escapeHtml(s.imageStyle || '')}</textarea>
-      <p class="field-hint">Beschreibt den durchgehenden Look. Die folgenspezifische Änderung gibst du später bei der jeweiligen Folge ein.</p>
+      <p class="field-hint">Beschreibt den durchgehenden Look. Gesichter, Anordnung und Schriftzug bleiben ohnehin immer gleich — pro Folge änderst du nur Kleidung und Hintergrund.</p>
       <button class="btn ghost small" id="saveStyleBtn" style="margin-top:8px;">Stil speichern</button>
     </div>
 
@@ -561,7 +564,10 @@ async function renderSettings() {
   $('#saveStyleBtn').addEventListener('click', async () => {
     await api('/api/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageStyle: $('#s_imageStyle').value }),
+      body: JSON.stringify({
+        imageStyle: $('#s_imageStyle').value,
+        coverHeadline: $('#s_coverHeadline').value,
+      }),
     });
     toast('Stil gespeichert.');
   });

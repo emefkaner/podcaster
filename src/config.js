@@ -70,7 +70,9 @@ export const defaultSettings = {
   cover: '',
   // Quell-Feed für den Import (dein bisheriger Anchor-Feed).
   sourceFeedUrl: process.env.SOURCE_FEED_URL || '',
-  // Cover-Generator: Dateinamen der Ausgangsbilder (Team-Foto o. ä.) und Stilvorgabe.
+  // Cover-Generator: Ausgangsbilder, Stilvorgabe und der Schriftzug, der auf
+  // jedem Cover oben stehen bleibt.
   baseImages: [],
   imageStyle: '',
+  coverHeadline: 'DIE CINESPASTEN',
 };

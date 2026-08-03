@@ -123,6 +123,7 @@ router.post('/:id/artwork', async (req, res) => {
       wish,
       style: settings.imageStyle,
       title: ep.title,
+      headline: settings.coverHeadline,
       count,
     });
 

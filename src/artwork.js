@@ -20,13 +20,24 @@ function mimeFor(file) {
 }
 
 // Setzt aus Stilvorgabe und Kurzbeschreibung den vollständigen Auftrag zusammen.
-function buildPrompt({ style, wish, title }) {
+// Der unveränderliche Teil (Gesichter, Anordnung, Schriftzug) steht bewusst hier
+// und nicht in den Einstellungen, damit die Reihe verlässlich einheitlich bleibt.
+function buildPrompt({ style, wish, title, headline }) {
+  const head = (headline || 'DIE CINESPASTEN').trim();
   return [
     style?.trim() || DEFAULT_STYLE,
     '',
-    'Behalte die Personen aus dem Referenzbild bei: gleiche Gesichter, gleiche Anzahl,',
-    'gleiche Anordnung und gleicher Bildausschnitt. Verändere sie nur so, wie unten beschrieben.',
-    'Das Ergebnis ist ein quadratisches Podcast-Coverbild.',
+    'UNVERÄNDERLICH – halte dich strikt daran:',
+    `1. Die Gesichter der Personen aus dem Referenzbild bleiben exakt gleich:`,
+    '   gleiche Züge, Frisuren, Bärte, Brillen, Hautton und Mimik. Es sind dieselben',
+    '   Personen, in derselben Anzahl, Reihenfolge und Anordnung wie im Referenzbild.',
+    '2. Gleicher Bildaufbau: Brustbild der Gruppe in der unteren Bildhälfte, quadratisch.',
+    `3. Oben im Bild steht groß der Schriftzug „${head}" – gleiche Schriftart,`,
+    '   gleiche cremeweiße Farbe, gleiche Platzierung wie im Referenzbild.',
+    '   Der Text muss korrekt geschrieben und gut lesbar sein.',
+    '',
+    'VERÄNDERE NUR: die Kleidung der Personen und den Hintergrund,',
+    'passend zum Thema der Folge.',
     '',
     title ? `Thema der Folge: ${title}` : '',
     `Gewünschte Abwandlung: ${wish}`,
@@ -34,8 +45,9 @@ function buildPrompt({ style, wish, title }) {
 }
 
 export const DEFAULT_STYLE = [
-  'Erzeuge ein Podcast-Cover im Comic-Stil: kräftige Farben, klare Konturen,',
-  'leichte Cel-Shading-Optik, wie ein modernes Comicbuch-Panel.',
+  'Erzeuge ein quadratisches Podcast-Cover als kräftige Comic-Illustration:',
+  'satte Farben, klare dunkle Konturen, Cel-Shading, leicht cartoonhafte Gesichter,',
+  'stimmungsvolle Beleuchtung im Hintergrund – im Stil eines modernen Zeichentrick-Filmplakats.',
 ].join(' ');
 
 /**
@@ -47,14 +59,14 @@ export const DEFAULT_STYLE = [
  * @param {number} count Anzahl der Vorschläge
  * @returns {Promise<{data: Buffer, mimeType: string}[]>}
  */
-export async function generateCandidates({ basePaths, wish, style, title, count = 3 }) {
+export async function generateCandidates({ basePaths, wish, style, title, headline, count = 3 }) {
   if (!config.geminiKey) throw new Error('GEMINI_API_KEY ist nicht gesetzt.');
   const bases = (basePaths || []).filter((p) => p && fs.existsSync(p));
   if (!bases.length) throw new Error('Kein Ausgangsbild hinterlegt (in den Einstellungen festlegen).');
   if (!wish?.trim()) throw new Error('Bitte kurz beschreiben, was verändert werden soll.');
 
   const ai = new GoogleGenAI({ apiKey: config.geminiKey });
-  const prompt = buildPrompt({ style, wish, title });
+  const prompt = buildPrompt({ style, wish, title, headline });
 
   const parts = bases.map((file) => ({
     inlineData: { mimeType: mimeFor(file), data: fs.readFileSync(file).toString('base64') },
