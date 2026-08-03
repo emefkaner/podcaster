@@ -11,6 +11,7 @@ import { storageEnabled } from './storage.js';
 import episodesRouter from './routes/episodes.js';
 import settingsRouter from './routes/settings.js';
 import importRouter from './routes/import.js';
+import statusRouter from './routes/status.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
@@ -56,6 +57,7 @@ app.get('/api/session', (req, res) => {
 app.use('/api/episodes', episodesRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/import', importRouter);
+app.use('/api/status', statusRouter);
 
 // ---- Frontend ----
 // Login-Seite immer erreichbar; die App-Seite erfordert Login (sonst Redirect).

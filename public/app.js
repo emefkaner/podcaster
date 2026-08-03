@@ -454,6 +454,12 @@ async function renderSettings() {
     <button class="back" onclick="history.back()">← Zurück</button>
 
     <div class="card">
+      <h2 class="section" style="margin-top:0;">🩺 Systemstatus</h2>
+      <p class="muted">Zeigt auf einen Blick, was eingerichtet ist. Bei Problemen einfach abfotografieren.</p>
+      <div id="statusBox"><span class="spinner"></span></div>
+    </div>
+
+    <div class="card">
       <h2 class="section" style="margin-top:0;">Podcast-Infos (für den RSS-Feed)</h2>
       <label>Podcast-Titel</label>
       <input type="text" id="s_title" value="${escapeAttr(s.title)}" />
@@ -546,6 +552,8 @@ async function renderSettings() {
     toast('Gespeichert.');
   });
 
+  loadStatus();
+
   $('#baseUploadBtn').addEventListener('click', async () => {
     const files = $('#baseFiles').files;
     if (!files.length) return toast('Bitte zuerst Bilder auswählen.');
@@ -611,6 +619,32 @@ async function renderSettings() {
     try { await api('/api/settings/assets', { method: 'POST', body: fd }); toast('Hochgeladen.'); renderSettings(); }
     catch (e) { toast('Fehler: ' + e.message); btn.disabled = false; btn.textContent = 'Dateien hochladen'; }
   });
+}
+
+// Zeigt den Systemstatus als kompakte Liste mit Häkchen.
+async function loadStatus() {
+  const box = $('#statusBox');
+  if (!box) return;
+  try {
+    const st = await api('/api/status');
+    const ok = (v) => (v ? '<span class="success">✓</span>' : '<span class="error">✗</span>');
+    const r2 = st.speicher.startsWith('Cloudflare');
+    box.innerHTML = `
+      <div style="display:grid;gap:6px;font-size:.9rem;">
+        <div>${ok(r2)} Speicher: <b>${escapeHtml(st.speicher)}</b></div>
+        <div>${ok(st.schluessel.gemini)} Gemini-Schlüssel (Transkript, Text, Cover)</div>
+        <div>${ok(st.dateien.intro)} Intro: ${escapeHtml(st.dateien.intro || 'fehlt')}</div>
+        <div>${ok(st.dateien.outro)} Outro: ${escapeHtml(st.dateien.outro || 'fehlt')}</div>
+        <div>${ok(st.dateien.cover)} Podcast-Cover: ${escapeHtml(st.dateien.cover || 'fehlt')}</div>
+        <div>${ok(st.dateien.ausgangsbilder)} Ausgangsbilder für Cover-Generator: <b>${st.dateien.ausgangsbilder}</b></div>
+        <div>${ok(st.podcast.kontaktEmail)} Kontakt-E-Mail: ${escapeHtml(st.podcast.kontaktEmail || 'fehlt (von Spotify verlangt)')}</div>
+        <div style="margin-top:6px;">📻 Folgen: <b>${st.folgen.gesamt}</b>
+          (${st.folgen.veroeffentlicht} veröffentlicht, ${st.folgen.entwuerfe} Entwürfe${st.folgen.fehler ? `, <span class="error">${st.folgen.fehler} Fehler</span>` : ''})</div>
+        <div class="muted" style="font-size:.82rem;">Bildmodell: ${escapeHtml(st.bildmodell)}</div>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = `<p class="error">Status nicht abrufbar: ${escapeHtml(e.message)}</p>`;
+  }
 }
 
 // ---------- Escaping ----------
