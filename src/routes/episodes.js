@@ -109,8 +109,9 @@ router.post('/:id/artwork', async (req, res) => {
   const settings = getSettings();
   const wish = (req.body?.prompt || '').trim();
   const count = Math.min(4, Math.max(1, Number(req.body?.count) || 3));
-  // Titelzeile aufs Cover: was eingegeben wurde, sonst der Folgentitel.
-  const headline = (req.body?.headline ?? ep.artworkHeadline ?? ep.title ?? '').trim();
+  // Titelzeile aufs Cover: was eingegeben wurde, sonst der zuletzt verwendete,
+  // sonst der Standardtitel der Reihe aus den Einstellungen.
+  const headline = (req.body?.headline ?? ep.artworkHeadline ?? settings.coverHeadline ?? '').trim();
   const subtitle = (req.body?.subtitle ?? ep.artworkSubtitle ?? '').trim();
 
   // Ausgangsbilder in den Arbeitsordner holen.

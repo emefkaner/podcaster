@@ -212,9 +212,13 @@ async function loadEpisodes() {
 async function renderEpisode(id) {
   pageTitle.textContent = 'Folge';
   view.innerHTML = '<p class="muted">Lade …</p>';
-  let ep;
-  try { ep = await api(`/api/episodes/${encodeURIComponent(id)}`); }
-  catch (err) { view.innerHTML = `<p class="error">${err.message}</p>`; return; }
+  let ep, settings = {};
+  try {
+    [ep, settings] = await Promise.all([
+      api(`/api/episodes/${encodeURIComponent(id)}`),
+      api('/api/settings').catch(() => ({})),
+    ]);
+  } catch (err) { view.innerHTML = `<p class="error">${err.message}</p>`; return; }
 
   // Solange in Verarbeitung: Statusanzeige + Polling.
   if (ep.status === 'processing') {
@@ -267,7 +271,7 @@ async function renderEpisode(id) {
         <p class="field-hint" style="margin-top:4px;">Eure Gesichter bleiben immer gleich. Titel, Kleidung, Kulisse und Stimmung passen sich dem Film an.</p>
 
         <label style="margin-top:10px;">Titel oben aufs Cover</label>
-        <input type="text" id="artHeadline" value="${escapeAttr(ep.artworkHeadline || ep.title || '')}" placeholder="z. B. CINESPASTEN CRIME 101" />
+        <input type="text" id="artHeadline" value="${escapeAttr(ep.artworkHeadline || settings.coverHeadline || '')}" placeholder="z. B. CINESPASTEN CRIME 101" />
 
         <label>Unterzeile unten <span class="muted">(optional)</span></label>
         <input type="text" id="artSubtitle" value="${escapeAttr(ep.artworkSubtitle || '')}" placeholder="z. B. EASY ON THE SPACE SUITS" />
@@ -509,7 +513,11 @@ async function renderSettings() {
       <input type="file" id="baseFiles" accept="image/*" multiple />
       <button class="btn ghost small" id="baseUploadBtn" style="margin-top:8px;">Ausgangsbilder hinzufügen</button>
 
-      <label style="margin-top:18px;">Grund-Look (gilt für alle Folgen)</label>
+      <label style="margin-top:18px;">Standard-Titel oben auf dem Cover</label>
+      <input type="text" id="s_coverHeadline" value="${escapeAttr(s.coverHeadline || '')}" placeholder="DIE CINESPASTEN" />
+      <p class="field-hint">Wird bei jeder Folge vorgeschlagen. Pro Folge kannst du abweichen (z. B. „CINESPASTEN CRIME 101").</p>
+
+      <label style="margin-top:14px;">Grund-Look (gilt für alle Folgen)</label>
       <textarea id="s_imageStyle" style="min-height:90px;">${escapeHtml(s.imageStyle || '')}</textarea>
       <p class="field-hint">Der durchgehende Look eurer Reihe. Titel, Kleidung und Kulisse legst du pro Folge fest.</p>
       <button class="btn ghost small" id="saveStyleBtn" style="margin-top:8px;">Stil speichern</button>
@@ -582,9 +590,12 @@ async function renderSettings() {
   $('#saveStyleBtn').addEventListener('click', async () => {
     await api('/api/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageStyle: $('#s_imageStyle').value }),
+      body: JSON.stringify({
+        imageStyle: $('#s_imageStyle').value,
+        coverHeadline: $('#s_coverHeadline').value,
+      }),
     });
-    toast('Look gespeichert.');
+    toast('Gespeichert.');
   });
 
   $('#importBtn').addEventListener('click', async () => {
