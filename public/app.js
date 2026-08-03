@@ -259,6 +259,11 @@ async function renderEpisode(id) {
         <button class="btn ghost small" id="regenBtn" title="Neuen KI-Vorschlag">↻ Text</button>
       </div>
 
+      <label style="margin-top:18px;">Folgen-Bild ${ep.imageUrl ? '' : '<span class="muted">(ohne: Podcast-Cover wird verwendet)</span>'}</label>
+      ${ep.imageUrl ? `<img src="${escapeAttr(ep.imageUrl)}" alt="Folgen-Bild" style="width:120px;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:10px;" />` : ''}
+      <input type="file" id="epImage" accept="image/*" />
+      <button class="btn ghost small" id="epImageBtn" style="margin-top:8px;">Bild speichern</button>
+
       <label style="margin-top:18px;">Fertige Folge anhören (Intro + Audio + Outro)</label>
       <audio controls src="${audioUrl}"></audio>
     </div>
@@ -294,6 +299,23 @@ async function renderEpisode(id) {
       body: JSON.stringify({ title: $('#epTitle').value, description: $('#epDesc').value }),
     });
     toast('Gespeichert.');
+  });
+
+  $('#epImageBtn').addEventListener('click', async () => {
+    const file = $('#epImage').files[0];
+    if (!file) return toast('Bitte zuerst ein Bild auswählen.');
+    const btn = $('#epImageBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}/image`, { method: 'POST', body: fd });
+      toast('Bild gespeichert.');
+      renderEpisode(id);
+    } catch (e) {
+      toast('Fehler: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Bild speichern';
+    }
   });
 
   $('#regenBtn').addEventListener('click', async () => {

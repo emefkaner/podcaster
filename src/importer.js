@@ -51,6 +51,8 @@ export function parseFeed(xml) {
       length: Number(enclosure['@_length'] || 0),
       duration: parseDuration(it['itunes:duration']),
       pubDate: it.pubDate ? new Date(it.pubDate).toISOString() : new Date().toISOString(),
+      // Folgen-eigenes Bild (fällt sonst auf das Podcast-Cover zurück).
+      imageUrl: it['itunes:image']?.['@_href'] || it['media:thumbnail']?.['@_url'] || '',
     };
   });
 
@@ -62,6 +64,16 @@ async function fetchText(url) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`Feed konnte nicht geladen werden (HTTP ${res.status}).`);
   return res.text();
+}
+
+// Dateiendung aus einer Bild-URL ableiten (mit .jpg als Standard).
+function imageExt(url) {
+  try {
+    const ext = path.extname(new URL(url).pathname).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ? ext : '.jpg';
+  } catch {
+    return '.jpg';
+  }
 }
 
 async function downloadTo(url, dest) {
@@ -134,6 +146,24 @@ export async function importFeed(feedUrl, opts = {}) {
       }
     }
 
+    // Folgen-eigenes Bild übernehmen (falls vorhanden).
+    let imageUrl = item.imageUrl;
+    let imageKey = '';
+    if (item.imageUrl && rehost) {
+      try {
+        const ext = imageExt(item.imageUrl);
+        const tmp = path.join(paths.tmp, `img-${id}${ext}`);
+        await downloadTo(item.imageUrl, tmp);
+        imageKey = `episode-images/${id}${ext}`;
+        imageUrl = await uploadFile(tmp, imageKey, ext === '.png' ? 'image/png' : 'image/jpeg');
+        fs.rmSync(tmp, { force: true });
+      } catch (e) {
+        result.errors.push(`Bild „${item.title}": ${e.message}`);
+        imageUrl = item.imageUrl; // Original-Link behalten
+        imageKey = '';
+      }
+    }
+
     saveEpisode({
       id,
       title: item.title,
@@ -144,6 +174,8 @@ export async function importFeed(feedUrl, opts = {}) {
       rawTmp: '',
       audioKey,
       audioUrl,
+      imageKey,
+      imageUrl,
       duration: item.duration,
       size,
       enhance: { enabled: false, strength: 0 },

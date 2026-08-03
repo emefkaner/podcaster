@@ -71,6 +71,35 @@ router.post('/', upload.single('audio'), async (req, res) => {
   res.status(202).json(episode);
 });
 
+// Eigenes Bild für eine Folge hochladen (überschreibt das Podcast-Cover in den Apps).
+const imageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, paths.tmp),
+    filename: (req, file, cb) => cb(null, `epimg-${Date.now()}${path.extname(file.originalname) || '.jpg'}`),
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
+router.post('/:id/image', imageUpload.single('image'), async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (!req.file) return res.status(400).json({ error: 'Kein Bild erhalten' });
+
+  const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase();
+  const key = `episode-images/${ep.id}${ext}`;
+  try {
+    if (ep.imageKey && ep.imageKey !== key) await deleteKey(ep.imageKey);
+    ep.imageUrl = await uploadFile(req.file.path, key, ext === '.png' ? 'image/png' : 'image/jpeg');
+    ep.imageKey = key;
+    saveEpisode(ep);
+    res.json(ep);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(req.file.path, { force: true });
+  }
+});
+
 // Titel/Beschreibung bearbeiten (Freigabe/Änderung durch den Nutzer).
 router.put('/:id', (req, res) => {
   const ep = getEpisode(req.params.id);
@@ -148,6 +177,7 @@ router.delete('/:id', async (req, res) => {
   const ep = getEpisode(req.params.id);
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
   if (ep.audioKey) await deleteKey(ep.audioKey);
+  if (ep.imageKey) await deleteKey(ep.imageKey);
   if (ep.rawTmp) fs.rmSync(path.join(paths.tmp, ep.rawTmp), { force: true });
   deleteEpisode(ep.id);
   res.json({ ok: true });

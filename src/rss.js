@@ -28,16 +28,20 @@ export function buildFeed() {
     .map((e) => {
       const audioUrl = e.audioUrl || '';
       const pubDate = new Date(e.publishedAt).toUTCString();
+      // Beim Import behalten wir die Original-GUID, damit Spotify/Apple die Folge
+      // als dieselbe wiedererkennen und keine Dubletten anlegen.
+      const guid = e.importGuid || e.id;
       return `    <item>
       <title>${esc(e.title)}</title>
       <description>${esc(e.description)}</description>
       <itunes:summary>${esc(e.description)}</itunes:summary>
+      <content:encoded><![CDATA[${e.description || ''}]]></content:encoded>
       <enclosure url="${esc(audioUrl)}" length="${e.size || 0}" type="audio/mpeg"/>
-      <guid isPermaLink="false">${esc(e.id)}</guid>
+      <guid isPermaLink="false">${esc(guid)}</guid>
       <pubDate>${pubDate}</pubDate>
       <itunes:duration>${formatDuration(e.duration || 0)}</itunes:duration>
       <itunes:explicit>${s.explicit ? 'true' : 'false'}</itunes:explicit>
-    </item>`;
+${e.imageUrl ? `      <itunes:image href="${esc(e.imageUrl)}"/>\n` : ''}    </item>`;
     })
     .join('\n');
 
