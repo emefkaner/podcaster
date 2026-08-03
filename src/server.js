@@ -6,6 +6,7 @@ import { config, paths } from './config.js';
 import { issueCookie, clearCookie, isLoggedIn, checkPassword } from './auth.js';
 import { buildFeed } from './rss.js';
 import { initStore } from './store.js';
+import { seedAssets } from './seed.js';
 import { storageEnabled } from './storage.js';
 import episodesRouter from './routes/episodes.js';
 import settingsRouter from './routes/settings.js';
@@ -68,9 +69,11 @@ app.get(['/', '/settings', '/episode/:id'], (req, res) => {
 // Übrige statische Dateien (JS/CSS/Manifest/Service-Worker).
 app.use(express.static(publicDir));
 
-// Beim Start ggf. Metadaten aus dem R2-Backup wiederherstellen, dann lauschen.
+// Beim Start Metadaten aus dem R2-Backup wiederherstellen, mitgelieferte
+// Startdateien (Intro/Outro) übernehmen, dann lauschen.
 initStore()
-  .catch((e) => console.error('Store-Init fehlgeschlagen:', e.message))
+  .then(() => seedAssets())
+  .catch((e) => console.error('Start-Initialisierung fehlgeschlagen:', e.message))
   .finally(() => {
     app.listen(config.port, () => {
       console.log(`Podcast-App läuft auf Port ${config.port}`);
