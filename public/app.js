@@ -942,7 +942,16 @@ function escapeAttr(str = '') {
   return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-// Service Worker (PWA-Grundgerüst).
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Service Worker (PWA-Grundgerüst). Übernimmt ein neuer die Kontrolle, lädt die
+// Seite einmal neu – sonst liefe die alte Oberfläche gegen einen neuen Server.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
+}
 
 render();
