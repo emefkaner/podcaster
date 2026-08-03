@@ -1,5 +1,6 @@
 # Node + system-ffmpeg (Audio) + Chromium (Anchor-Push per Browser-Automation).
-FROM node:20-slim
+# Node 22: das AWS-SDK (für Cloudflare R2) verlangt ab Anfang 2027 mindestens Node 22.
+FROM node:22-slim
 
 # ffmpeg für Audio-Zusammenschnitt/-Optimierung.
 RUN apt-get update \
