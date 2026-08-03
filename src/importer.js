@@ -61,11 +61,20 @@ export function parseFeed(xml) {
   return { meta, items };
 }
 
+// Viele Podcast-Hosts liefern nur an Anfragen mit Browser-Kennung aus und
+// antworten sonst mit einer leeren oder abweisenden Seite.
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; PodcastStudio/1.0; +https://github.com/emefkaner/podcaster)',
+  'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+};
+
 // Holt eine URL als Text (Feed) bzw. als Datei (MP3/Cover).
 async function fetchText(url) {
-  const res = await fetch(url, { redirect: 'follow' });
+  const res = await fetch(url, { redirect: 'follow', headers: HEADERS });
   if (!res.ok) throw new Error(`Feed konnte nicht geladen werden (HTTP ${res.status}).`);
-  return res.text();
+  const text = await res.text();
+  if (!text.trim()) throw new Error('Der Feed kam leer zurück.');
+  return { text, finalUrl: res.url, contentType: res.headers.get('content-type') || '' };
 }
 
 // Dateiendung aus einer Bild-URL ableiten (mit .jpg als Standard).
@@ -81,7 +90,7 @@ function imageExt(url) {
 // Lädt eine Datei stückweise auf die Platte, statt sie komplett in den
 // Arbeitsspeicher zu holen – wichtig auf kleinen Instanzen mit wenig RAM.
 async function downloadTo(url, dest) {
-  const res = await fetch(url, { redirect: 'follow' });
+  const res = await fetch(url, { redirect: 'follow', headers: HEADERS });
   if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status}) für ${url}`);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(dest));
@@ -93,11 +102,29 @@ async function downloadTo(url, dest) {
 // opts.importMeta: Podcast-Infos + Cover übernehmen.
 export async function importFeed(feedUrl, opts = {}) {
   const { rehost = true, importMeta = true, onProgress = () => {} } = opts;
-  const xml = await fetchText(feedUrl);
+  const { text: xml, finalUrl, contentType } = await fetchText(feedUrl);
+
+  // Kam statt XML eine Webseite zurück, hilft die Fehlermeldung beim Suchen.
+  if (/^\s*<!doctype html|^\s*<html/i.test(xml)) {
+    throw new Error(
+      `Unter dieser Adresse liegt eine Webseite statt eines RSS-Feeds ` +
+      `(${contentType || 'unbekannter Typ'}${finalUrl !== feedUrl ? `, umgeleitet auf ${finalUrl}` : ''}). ` +
+      `Bitte die echte RSS-Adresse verwenden.`
+    );
+  }
+
   const { meta, items } = parseFeed(xml);
 
+  if (!items.length) {
+    throw new Error(
+      `Der Feed „${meta.title || 'ohne Titel'}" enthält keine Folgen ` +
+      `(${Math.round(xml.length / 1024)} KB geladen${finalUrl !== feedUrl ? `, umgeleitet auf ${finalUrl}` : ''}). ` +
+      `Stimmt die Adresse?`
+    );
+  }
+
   const result = { total: items.length, imported: 0, skipped: 0, metaImported: false, errors: [] };
-  onProgress({ ...result, phase: 'Podcast-Infos werden übernommen …' });
+  onProgress({ ...result, phase: `${items.length} Folgen gefunden – Podcast-Infos werden übernommen …` });
 
   // Podcast-Infos übernehmen (nur leere/Standard-Felder füllen, nichts überschreiben,
   // was du schon selbst gesetzt hast).
