@@ -12,6 +12,7 @@ import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
+import { generateCandidates } from '../artwork.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -98,6 +99,78 @@ router.post('/:id/image', imageUpload.single('image'), async (req, res) => {
   } finally {
     fs.rmSync(req.file.path, { force: true });
   }
+});
+
+// Cover-Vorschläge erzeugen: Ausgangsbild(er) passend zum Folgenthema abwandeln.
+router.post('/:id/artwork', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+
+  const settings = getSettings();
+  const wish = (req.body?.prompt || '').trim();
+  const count = Math.min(4, Math.max(1, Number(req.body?.count) || 3));
+
+  // Ausgangsbilder in den Arbeitsordner holen.
+  const localBases = [];
+  for (const name of settings.baseImages || []) {
+    const local = await downloadToFile(`base-images/${name}`, path.join(paths.tmp, `base-${name}`));
+    if (local) localBases.push(local);
+  }
+
+  try {
+    const images = await generateCandidates({
+      basePaths: localBases,
+      wish,
+      style: settings.imageStyle,
+      title: ep.title,
+      count,
+    });
+
+    // Vorschläge ablegen, damit sie im Browser angezeigt werden können.
+    const candidates = [];
+    for (let i = 0; i < images.length; i++) {
+      const ext = images[i].mimeType === 'image/jpeg' ? '.jpg' : '.png';
+      const key = `artwork-candidates/${ep.id}-${Date.now()}-${i}${ext}`;
+      const tmpFile = path.join(paths.tmp, path.basename(key));
+      fs.writeFileSync(tmpFile, images[i].data);
+      const url = await uploadFile(tmpFile, key, images[i].mimeType);
+      fs.rmSync(tmpFile, { force: true });
+      candidates.push({ key, url });
+    }
+
+    const cur = getEpisode(ep.id);
+    // Vorherige, nicht gewählte Vorschläge aufräumen.
+    for (const old of cur.artworkCandidates || []) {
+      if (old.key !== cur.imageKey) await deleteKey(old.key);
+    }
+    cur.artworkCandidates = candidates;
+    cur.artworkPrompt = wish;
+    saveEpisode(cur);
+
+    res.json({ candidates });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    for (const f of localBases) fs.rmSync(f, { force: true });
+  }
+});
+
+// Einen Vorschlag als Folgen-Cover übernehmen (die anderen werden gelöscht).
+router.post('/:id/artwork/select', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const chosen = (ep.artworkCandidates || []).find((c) => c.key === req.body?.key);
+  if (!chosen) return res.status(400).json({ error: 'Vorschlag nicht gefunden' });
+
+  if (ep.imageKey && ep.imageKey !== chosen.key) await deleteKey(ep.imageKey);
+  for (const c of ep.artworkCandidates) {
+    if (c.key !== chosen.key) await deleteKey(c.key);
+  }
+  ep.imageKey = chosen.key;
+  ep.imageUrl = chosen.url;
+  ep.artworkCandidates = [];
+  saveEpisode(ep);
+  res.json(ep);
 });
 
 // Titel/Beschreibung bearbeiten (Freigabe/Änderung durch den Nutzer).

@@ -261,6 +261,17 @@ async function renderEpisode(id) {
 
       <label style="margin-top:18px;">Folgen-Bild ${ep.imageUrl ? '' : '<span class="muted">(ohne: Podcast-Cover wird verwendet)</span>'}</label>
       ${ep.imageUrl ? `<img src="${escapeAttr(ep.imageUrl)}" alt="Folgen-Bild" style="width:120px;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:10px;" />` : ''}
+
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;">
+        <b style="font-size:.95rem;">🎨 Cover generieren</b>
+        <p class="field-hint" style="margin-top:4px;">Beschreib kurz, was am Ausgangsbild anders sein soll — z. B. „alle tragen Spider-Man-Masken" oder „Spartanerhelme, Zyklop im Hintergrund".</p>
+        <textarea id="artPrompt" style="min-height:70px;" placeholder="alle tragen Spider-Man-Masken, Netze im Hintergrund">${escapeHtml(ep.artworkPrompt || '')}</textarea>
+        <button class="btn" id="artBtn" style="margin-top:10px;">3 Vorschläge generieren</button>
+        <p class="field-hint">Kostet ein paar Cent pro Durchgang.</p>
+        <div id="artResult"></div>
+      </div>
+
+      <label>Eigenes Bild hochladen</label>
       <input type="file" id="epImage" accept="image/*" />
       <button class="btn ghost small" id="epImageBtn" style="margin-top:8px;">Bild speichern</button>
 
@@ -299,6 +310,29 @@ async function renderEpisode(id) {
       body: JSON.stringify({ title: $('#epTitle').value, description: $('#epDesc').value }),
     });
     toast('Gespeichert.');
+  });
+
+  // Beim Öffnen bereits vorhandene Vorschläge anzeigen.
+  if (ep.artworkCandidates?.length) showCandidates(id, ep.artworkCandidates);
+
+  $('#artBtn').addEventListener('click', async () => {
+    const prompt = $('#artPrompt').value.trim();
+    if (!prompt) return toast('Bitte kurz beschreiben, was verändert werden soll.');
+    const btn = $('#artBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generiere … (~30 Sek.)';
+    $('#artResult').innerHTML = '';
+    try {
+      const r = await api(`/api/episodes/${encodeURIComponent(id)}/artwork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, count: 3 }),
+      });
+      showCandidates(id, r.candidates);
+      toast(`${r.candidates.length} Vorschläge fertig.`);
+    } catch (e) {
+      $('#artResult').innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+    } finally {
+      btn.disabled = false; btn.textContent = '3 Vorschläge generieren';
+    }
   });
 
   $('#epImageBtn').addEventListener('click', async () => {
@@ -358,6 +392,38 @@ async function renderEpisode(id) {
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
 }
 
+// Zeigt die generierten Cover-Vorschläge zur Auswahl an.
+function showCandidates(id, candidates) {
+  const box = $('#artResult');
+  if (!box) return;
+  box.innerHTML = `
+    <p class="field-hint" style="margin-top:12px;">Tippe auf den Vorschlag, den du nehmen willst:</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px;">
+      ${candidates.map((c) => `
+        <button class="cand" data-key="${escapeAttr(c.key)}"
+                style="padding:0;border:2px solid var(--border);border-radius:12px;overflow:hidden;background:none;cursor:pointer;">
+          <img src="${escapeAttr(c.url)}" alt="Vorschlag" style="width:100%;aspect-ratio:1;object-fit:cover;display:block;" />
+        </button>`).join('')}
+    </div>`;
+
+  box.querySelectorAll('.cand').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Diesen Vorschlag als Folgen-Cover übernehmen? Die anderen werden verworfen.')) return;
+      btn.style.borderColor = 'var(--primary)';
+      try {
+        await api(`/api/episodes/${encodeURIComponent(id)}/artwork/select`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: btn.dataset.key }),
+        });
+        toast('Cover übernommen ✓');
+        renderEpisode(id);
+      } catch (e) {
+        toast('Fehler: ' + e.message);
+      }
+    });
+  });
+}
+
 async function deleteEpisode(id) {
   if (!confirm('Diese Folge unwiderruflich löschen?')) return;
   await api(`/api/episodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -409,6 +475,28 @@ async function renderSettings() {
     </div>
 
     <div class="card">
+      <h2 class="section" style="margin-top:0;">🎨 Cover-Generator</h2>
+      <p class="muted">Lade hier euer Ausgangsbild hoch (z. B. das Team-Foto). Bei jeder Folge wird es dann passend zum Thema abgewandelt — mehrere Bilder helfen, dass eure Gesichter erkennbar bleiben.</p>
+
+      <label>Ausgangsbilder</label>
+      <div id="baseList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+        ${(s.baseImageUrls || []).map((b) => `
+          <div style="position:relative;">
+            <img src="${escapeAttr(b.url)}" alt="Ausgangsbild" style="width:88px;height:88px;object-fit:cover;border-radius:10px;display:block;" />
+            <button class="delBase" data-name="${escapeAttr(b.name)}" title="Entfernen"
+              style="position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:none;background:var(--danger);color:#fff;cursor:pointer;font-size:.9rem;line-height:1;">×</button>
+          </div>`).join('') || '<span class="muted">Noch keine Ausgangsbilder.</span>'}
+      </div>
+      <input type="file" id="baseFiles" accept="image/*" multiple />
+      <button class="btn ghost small" id="baseUploadBtn" style="margin-top:8px;">Ausgangsbilder hinzufügen</button>
+
+      <label style="margin-top:18px;">Stil-Vorgabe (gilt für alle Folgen)</label>
+      <textarea id="s_imageStyle" style="min-height:90px;">${escapeHtml(s.imageStyle || '')}</textarea>
+      <p class="field-hint">Beschreibt den durchgehenden Look. Die folgenspezifische Änderung gibst du später bei der jeweiligen Folge ein.</p>
+      <button class="btn ghost small" id="saveStyleBtn" style="margin-top:8px;">Stil speichern</button>
+    </div>
+
+    <div class="card">
       <h2 class="section" style="margin-top:0;">Bestehende Folgen importieren (Umzug)</h2>
       <p class="muted">Trag die RSS-URL deines aktuellen Podcasts ein (z. B. cinespasten). Alle Folgen werden übernommen.</p>
       <label>Aktuelle RSS-Feed-URL</label>
@@ -443,6 +531,39 @@ async function renderSettings() {
       }),
     });
     toast('Gespeichert.');
+  });
+
+  $('#baseUploadBtn').addEventListener('click', async () => {
+    const files = $('#baseFiles').files;
+    if (!files.length) return toast('Bitte zuerst Bilder auswählen.');
+    const fd = new FormData();
+    for (const f of files) fd.append('images', f);
+    const btn = $('#baseUploadBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
+    try {
+      await api('/api/settings/base-images', { method: 'POST', body: fd });
+      toast('Hinzugefügt.');
+      renderSettings();
+    } catch (e) {
+      toast('Fehler: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Ausgangsbilder hinzufügen';
+    }
+  });
+
+  view.querySelectorAll('.delBase').forEach((b) => {
+    b.addEventListener('click', async () => {
+      if (!confirm('Dieses Ausgangsbild entfernen?')) return;
+      await api(`/api/settings/base-images/${encodeURIComponent(b.dataset.name)}`, { method: 'DELETE' });
+      renderSettings();
+    });
+  });
+
+  $('#saveStyleBtn').addEventListener('click', async () => {
+    await api('/api/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageStyle: $('#s_imageStyle').value }),
+    });
+    toast('Stil gespeichert.');
   });
 
   $('#importBtn').addEventListener('click', async () => {

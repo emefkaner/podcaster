@@ -32,6 +32,10 @@ export const config = {
   ).replace(/\/$/, ''),
   // Gemini: Standard für Transkription + Infotext (kostenloser Kontingentbereich).
   geminiKey: process.env.GEMINI_API_KEY || '',
+  // Bildmodell für den Cover-Generator. Achtung: Bilder sind NICHT im kostenlosen
+  // Kontingent enthalten. "gemini-3.1-flash-image" ist die günstige Variante,
+  // "gemini-3-pro-image" liefert bessere Gesichts-Konsistenz, kostet aber mehr.
+  geminiImageModel: process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
   // Optionale Alternativen.
   openaiKey: process.env.OPENAI_API_KEY || '',
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',
@@ -66,4 +70,7 @@ export const defaultSettings = {
   cover: '',
   // Quell-Feed für den Import (dein bisheriger Anchor-Feed).
   sourceFeedUrl: process.env.SOURCE_FEED_URL || '',
+  // Cover-Generator: Dateinamen der Ausgangsbilder (Team-Foto o. ä.) und Stilvorgabe.
+  baseImages: [],
+  imageStyle: '',
 };
