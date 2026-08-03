@@ -601,24 +601,20 @@ async function renderSettings() {
   $('#importBtn').addEventListener('click', async () => {
     const url = $('#imp_url').value.trim();
     if (!url) return toast('Bitte Feed-URL eingeben.');
-    const btn = $('#importBtn'), out = $('#importResult');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Importiere …';
-    out.textContent = 'Lade Feed und übernehme Folgen … (nicht schließen)';
     try {
-      const r = await api('/api/import', {
+      await api('/api/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ feedUrl: url, rehost: $('#imp_rehost').checked, importMeta: $('#imp_meta').checked }),
       });
-      out.innerHTML = `<span class="success">✓ Fertig:</span> ${r.imported} importiert, ${r.skipped} übersprungen (von ${r.total}).` +
-        (r.metaImported ? ' Podcast-Infos übernommen.' : '') +
-        (r.errors && r.errors.length ? `<br><span class="error">${r.errors.length} Warnung(en): ${escapeHtml(r.errors.slice(0,3).join('; '))}</span>` : '');
-      toast('Import fertig ✓');
+      toast('Import gestartet.');
+      pollImport();
     } catch (e) {
-      out.innerHTML = `<span class="error">Fehler: ${escapeHtml(e.message)}</span>`;
-    } finally {
-      btn.disabled = false; btn.textContent = 'Import starten';
+      $('#importResult').innerHTML = `<span class="error">${escapeHtml(e.message)}</span>`;
     }
   });
+
+  // Läuft schon einer? Dann direkt die Anzeige aufnehmen.
+  pollImport();
 
   $('#saveAssets').addEventListener('click', async () => {
     const fd = new FormData();
@@ -630,6 +626,42 @@ async function renderSettings() {
     try { await api('/api/settings/assets', { method: 'POST', body: fd }); toast('Hochgeladen.'); renderSettings(); }
     catch (e) { toast('Fehler: ' + e.message); btn.disabled = false; btn.textContent = 'Dateien hochladen'; }
   });
+}
+
+// Verfolgt einen laufenden Import und zeigt den Fortschritt an.
+// Der Import läuft serverseitig weiter, auch wenn die Seite geschlossen wird.
+async function pollImport() {
+  const out = $('#importResult'), btn = $('#importBtn');
+  if (!out) return;
+  let st;
+  try { st = await api('/api/import/status'); } catch { return; }
+
+  if (st.running) {
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Import läuft …'; }
+    const done = (st.imported || 0) + (st.skipped || 0);
+    const pct = st.total ? Math.round((done / st.total) * 100) : 0;
+    out.innerHTML = `
+      <div style="margin-top:10px;">
+        <div style="height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:var(--primary);transition:width .4s;"></div>
+        </div>
+        <p class="field-hint" style="margin-top:6px;">
+          ${escapeHtml(st.phase || '')}<br>
+          ${st.total ? `${done} von ${st.total} Folgen · ${st.imported} übernommen` : 'Feed wird gelesen …'}
+        </p>
+        <p class="field-hint">Läuft im Hintergrund weiter — du kannst die Seite ruhig verlassen.</p>
+      </div>`;
+    setTimeout(pollImport, 3000);
+    return;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Import starten'; }
+  if (st.finishedAt) {
+    out.innerHTML = st.error
+      ? `<span class="error">Abgebrochen: ${escapeHtml(st.error)}</span>`
+      : `<span class="success">✓ Fertig:</span> ${st.imported} übernommen, ${st.skipped} übersprungen (von ${st.total}).` +
+        (st.errors?.length ? `<br><span class="error">${st.errors.length} Warnung(en): ${escapeHtml(st.errors.slice(0, 3).join('; '))}</span>` : '');
+  }
 }
 
 // Zeigt den Systemstatus als kompakte Liste mit Häkchen.

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import { XMLParser } from 'fast-xml-parser';
 import { paths } from './config.js';
 import { listEpisodes, saveEpisode, getSettings, saveSettings } from './store.js';
@@ -76,23 +78,26 @@ function imageExt(url) {
   }
 }
 
+// Lädt eine Datei stückweise auf die Platte, statt sie komplett in den
+// Arbeitsspeicher zu holen – wichtig auf kleinen Instanzen mit wenig RAM.
 async function downloadTo(url, dest) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status}) für ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(dest, buf);
-  return buf.length;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(dest));
+  return fs.statSync(dest).size;
 }
 
 // Importiert alle Folgen aus einem bestehenden Podcast-RSS-Feed.
 // opts.rehost: MP3s in den eigenen Speicher kopieren (empfohlen für sauberen Umzug).
 // opts.importMeta: Podcast-Infos + Cover übernehmen.
 export async function importFeed(feedUrl, opts = {}) {
-  const { rehost = true, importMeta = true } = opts;
+  const { rehost = true, importMeta = true, onProgress = () => {} } = opts;
   const xml = await fetchText(feedUrl);
   const { meta, items } = parseFeed(xml);
 
   const result = { total: items.length, imported: 0, skipped: 0, metaImported: false, errors: [] };
+  onProgress({ ...result, phase: 'Podcast-Infos werden übernommen …' });
 
   // Podcast-Infos übernehmen (nur leere/Standard-Felder füllen, nichts überschreiben,
   // was du schon selbst gesetzt hast).
@@ -125,6 +130,7 @@ export async function importFeed(feedUrl, opts = {}) {
   for (const item of items) {
     if (existing.has(item.guid)) { result.skipped++; continue; }
     if (!item.enclosureUrl) { result.skipped++; continue; }
+    onProgress({ ...result, phase: `Übernehme „${item.title}" …` });
 
     const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     let audioUrl = item.enclosureUrl;
