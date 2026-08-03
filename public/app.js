@@ -916,6 +916,7 @@ async function loadStatus() {
     const st = await api('/api/status');
     const ok = (v) => (v ? '<span class="success">✓</span>' : '<span class="error">✗</span>');
     const r2 = st.speicher.startsWith('Cloudflare');
+    const p = st.pruefung;
     box.innerHTML = `
       <div style="display:grid;gap:6px;font-size:.9rem;">
         <div>${ok(r2)} Speicher: <b>${escapeHtml(st.speicher)}</b></div>
@@ -927,7 +928,18 @@ async function loadStatus() {
         <div>${ok(st.podcast.kontaktEmail)} Kontakt-E-Mail: ${escapeHtml(st.podcast.kontaktEmail || 'fehlt (von Spotify verlangt)')}</div>
         <div style="margin-top:6px;">📻 Folgen: <b>${st.folgen.gesamt}</b>
           (${st.folgen.veroeffentlicht} veröffentlicht, ${st.folgen.entwuerfe} Entwürfe${st.folgen.fehler ? `, <span class="error">${st.folgen.fehler} Fehler</span>` : ''})</div>
-        <div class="muted" style="font-size:.82rem;">Bildmodell: ${escapeHtml(st.bildmodell)}</div>
+        ${p ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+          <b style="font-size:.88rem;">Umzugs-Prüfung</b>
+          <div style="margin-top:4px;">📅 Zeitraum: <b>${escapeHtml(p.aeltesteFolge || '–')}</b> bis <b>${escapeHtml(p.neuesteFolge || '–')}</b></div>
+          <div>${ok(p.nochBeimAltenAnbieter === 0)} Audio im eigenen Speicher: <b>${escapeHtml(p.audioImEigenenSpeicher)}</b></div>
+          ${p.nochBeimAltenAnbieter ? `<div class="error">⚠️ ${p.nochBeimAltenAnbieter} Folge(n) noch beim alten Anbieter${p.beispieleFremd.length ? `: ${escapeHtml(p.beispieleFremd.join(', '))}` : ''}</div>` : ''}
+          ${p.ohneAudio ? `<div class="error">⚠️ ${p.ohneAudio} Folge(n) ohne Audiodatei</div>` : ''}
+          <div>🖼️ Mit eigenem Folgenbild: <b>${p.mitFolgenbild}</b></div>
+          ${p.ohneText ? `<div class="error">⚠️ ${p.ohneText} Folge(n) ohne Text</div>` : '<div>✍️ Alle Folgen haben einen Text</div>'}
+          <div class="muted" style="font-size:.82rem;">Belegter Speicher: ca. ${p.gesamtgroesseMB} MB von 10 000 MB</div>
+        </div>` : ''}
+        <div class="muted" style="font-size:.82rem;margin-top:6px;">Bildmodell: ${escapeHtml(st.bildmodell)}</div>
       </div>`;
   } catch (e) {
     box.innerHTML = `<p class="error">Status nicht abrufbar: ${escapeHtml(e.message)}</p>`;
