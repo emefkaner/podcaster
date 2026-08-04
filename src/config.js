@@ -44,6 +44,10 @@ export const config = {
   higgsfield: {
     apiKey: process.env.HIGGSFIELD_API_KEY || process.env.HIGGSFIELD_KEY || '',
     apiSecret: process.env.HIGGSFIELD_API_SECRET || process.env.HIGGSFIELD_SECRET || '',
+    // Modell und Endpunkt umstellbar, ohne den Code zu ändern.
+    modell: process.env.HIGGSFIELD_MODEL || 'nano_banana_2',
+    endpunkt: process.env.HIGGSFIELD_ENDPOINT || '',
+    aufloesung: process.env.HIGGSFIELD_RESOLUTION || '1k',
   },
   // Spotify for Podcasters (Anchor) – für den direkten Push per Browser-Automation.
   anchor: {

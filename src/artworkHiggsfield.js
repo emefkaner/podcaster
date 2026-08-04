@@ -7,7 +7,11 @@ import { config } from './config.js';
 // auswertet und dadurch Gesichter über mehrere Bilder hinweg wiedererkennbar hält.
 // Wird verwendet, wenn Zugangsdaten hinterlegt sind – sonst greift Gemini.
 
-const ENDPUNKT = '/v1/text2image/soul';
+// Higgsfield spricht Modelle über Pfade an. Soul ist der von der offiziellen
+// Bibliothek dokumentierte Weg und auf gleichbleibende Gesichter ausgelegt.
+// Andere Modelle (etwa Nano Banana 2) lassen sich über die Einstellung
+// HIGGSFIELD_ENDPOINT ansteuern, ohne dass der Code angefasst werden muss.
+const STANDARD_ENDPUNKT = '/v1/text2image/soul';
 
 export function higgsfieldVerfuegbar() {
   return Boolean(config.higgsfield.apiKey && config.higgsfield.apiSecret);
@@ -41,16 +45,19 @@ export async function higgsfieldVorschlaege({ basePaths, prompt, count = 3 }) {
       referenzen.push(url);
     }
 
-    const ergebnis = await client.generate(ENDPUNKT, {
-      params: {
-        prompt,
-        quality: '1080p',
-        aspect_ratio: '1:1',          // Podcast-Cover sind quadratisch
-        batch_size: Math.min(4, Math.max(1, count)),
-        image_reference: referenzen.map((url) => ({ type: 'image_url', image_url: url })),
-        image_reference_strength: 0.8, // hoch, damit die Gesichter erhalten bleiben
-      },
-    });
+    const endpunkt = config.higgsfield.endpunkt || STANDARD_ENDPUNKT;
+    const params = {
+      prompt,
+      aspect_ratio: '1:1',           // Podcast-Cover sind quadratisch
+      resolution: config.higgsfield.aufloesung, // 1k reicht für ein Cover
+      batch_size: Math.min(4, Math.max(1, count)),
+      image_reference: referenzen.map((url) => ({ type: 'image_url', image_url: url })),
+      image_reference_strength: 0.8, // hoch, damit die Gesichter erhalten bleiben
+    };
+    // Modellkennung nur mitschicken, wenn eine gesetzt ist.
+    if (config.higgsfield.modell) params.model = config.higgsfield.modell;
+
+    const ergebnis = await client.generate(endpunkt, { params });
 
     // Fertige Bilder herunterladen.
     const bilderRaus = [];

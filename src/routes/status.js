@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
       anchor: Boolean(config.anchor.email && config.anchor.password),
     },
     bildanbieter: config.higgsfield.apiKey && config.higgsfield.apiSecret
-      ? 'Higgsfield (Soul)'
+      ? `Higgsfield (${config.higgsfield.modell || 'soul'}, ${config.higgsfield.aufloesung})`
       : (config.geminiKey ? `Gemini (${config.geminiImageModel})` : 'nicht eingerichtet'),
     dateien: {
       intro: s.intro || null,
