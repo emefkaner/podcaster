@@ -232,14 +232,28 @@ function setupUpload() {
   strength.addEventListener('input', () => { strengthVal.textContent = strength.value; });
   chk.addEventListener('change', () => { wrap.style.opacity = chk.checked ? '1' : '0.4'; strength.disabled = !chk.checked; });
 
-  // Lokale Bearbeitung nur anbieten, wo sie sinnvoll ist (Rechner, genug Speicher).
+  // Lokale Bearbeitung: Zustand immer anzeigen, damit nachvollziehbar ist,
+  // ob dein Rechner die Arbeit übernimmt oder der Server.
+  const hinweis = $('#lokalHint');
   import('/localaudio.js').then((mod) => {
     localAudio = mod;
-    if (mod.lokalMoeglich()) {
-      $('#lokalLabel')?.classList.remove('hidden');
-      $('#lokalHint')?.classList.remove('hidden');
+    const { ok, grund } = mod.lokalPruefen();
+    $('#lokalLabel')?.classList.remove('hidden');
+    hinweis?.classList.remove('hidden');
+    if (ok) {
+      hinweis.innerHTML = 'Rauschunterdrückung, Pausenkürzung und Zusammenbau rechnet dein Gerät '
+        + 'statt des kleinen Servers. Beim ersten Mal wird einmalig ein Audio-Werkzeug geladen (ca. 31 MB).';
+    } else {
+      $('#lokalChk').checked = false;
+      $('#lokalChk').disabled = true;
+      hinweis.innerHTML = `<span class="error">Auf diesem Gerät nicht möglich:</span> ${escapeHtml(grund)}`;
     }
-  }).catch(() => {});
+  }).catch((e) => {
+    $('#lokalLabel')?.classList.remove('hidden');
+    hinweis?.classList.remove('hidden');
+    if ($('#lokalChk')) { $('#lokalChk').checked = false; $('#lokalChk').disabled = true; }
+    hinweis.innerHTML = `<span class="error">Audio-Werkzeug nicht ladbar:</span> ${escapeHtml(e.message)}`;
+  });
 
   const trimChk = $('#trimChk'), trimSec = $('#trimSec'), trimVal = $('#trimVal'), trimWrap = $('#trimWrap');
   const showTrim = () => { trimVal.textContent = (trimSec.value / 10).toFixed(1).replace('.', ','); };

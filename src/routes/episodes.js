@@ -536,6 +536,23 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     saveEpisode(cur);
   };
 
+  // Wächter: Bleibt ein Schritt ungewöhnlich lange stehen, wird die Folge
+  // freigegeben statt endlos „in Arbeit" zu bleiben. Auf sehr kleinen Servern
+  // kann das Zusammenbauen einer langen Folge sonst stundenlang blockieren.
+  const WAECHTER_MINUTEN = 45;
+  const waechter = setTimeout(() => {
+    const cur = getEpisode(id);
+    if (cur?.status !== 'processing') return;
+    saveEpisode({
+      ...cur,
+      status: 'error',
+      error: `Die Verarbeitung lief länger als ${WAECHTER_MINUTEN} Minuten und wurde abgebrochen. `
+           + 'Tipp: Beim Hochladen „Auf diesem Gerät bearbeiten" ankreuzen — dann rechnet dein '
+           + 'Rechner statt des Servers.',
+      fortschritt: null,
+    });
+  }, WAECHTER_MINUTEN * 60 * 1000);
+
   const tmpFiles = [];
   try {
     melde('Aufnahmen werden geladen …');
@@ -619,6 +636,7 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     ep.fortschritt = null;
     saveEpisode(ep);
   } finally {
+    clearTimeout(waechter);
     for (const f of tmpFiles) fs.rmSync(f, { force: true });
   }
 }

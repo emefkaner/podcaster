@@ -21,11 +21,20 @@ let ffmpegInstanz = null;
 let ladeVersuch = null;
 
 // Nur anbieten, wo es auch sinnvoll ist: genug Speicher und kein Telefon.
-export function lokalMoeglich() {
-  if (!window.WebAssembly) return false;
+// Gibt bei Ablehnung den Grund zurück, damit die App ihn anzeigen kann.
+export function lokalPruefen() {
+  if (!window.WebAssembly) return { ok: false, grund: 'Browser unterstützt WebAssembly nicht.' };
+  if (!window.isSecureContext) return { ok: false, grund: 'Nur über eine gesicherte Verbindung möglich.' };
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    return { ok: false, grund: 'Auf dem Handy zu speicherhungrig — der Server übernimmt.' };
+  }
   const speicher = navigator.deviceMemory || 4;
-  const mobil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  return speicher >= 4 && !mobil;
+  if (speicher < 4) return { ok: false, grund: `Zu wenig Arbeitsspeicher (${speicher} GB).` };
+  return { ok: true, grund: '' };
+}
+
+export function lokalMoeglich() {
+  return lokalPruefen().ok;
 }
 
 function skriptLaden(src) {
