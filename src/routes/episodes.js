@@ -6,7 +6,7 @@ import path from 'node:path';
 import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
 import { listEpisodes, getEpisode, saveEpisode, deleteEpisode, getSettings } from '../store.js';
-import { buildEpisode } from '../audio.js';
+import { buildEpisode, probeDuration } from '../audio.js';
 import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
@@ -56,8 +56,16 @@ router.get('/:id', (req, res) => {
 
 // Neue Folge anlegen. Es dürfen gleich mehrere Aufnahme-Teile mitkommen –
 // eine Folge besteht oft aus Vorgespräch und Spoilerteil.
-router.post('/', upload.array('audio', 12), async (req, res) => {
-  const files = req.files || [];
+// „audio" sind die einzelnen Teile, „fertig" die im Browser bereits
+// zusammengebaute Folge – letztere spart dem Server die gesamte Audioarbeit.
+const uploadFelder = upload.fields([
+  { name: 'audio', maxCount: 12 },
+  { name: 'fertig', maxCount: 1 },
+]);
+
+router.post('/', uploadFelder, async (req, res) => {
+  const files = req.files?.audio || [];
+  const fertigDatei = req.files?.fertig?.[0] || null;
   if (!files.length) return res.status(400).json({ error: 'Keine Audiodatei erhalten' });
 
   const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -75,7 +83,7 @@ router.post('/', upload.array('audio', 12), async (req, res) => {
     needsRebuild: false,  // true, sobald sich die Teile nach dem Bau ändern
     enhance: {
       enabled: req.body.enhance === 'true' || req.body.enhance === '1',
-      strength: Math.min(100, Math.max(0, Number(req.body.strength) || 60)),
+      strength: Math.min(100, Math.max(0, Number(req.body.strength) || 50)),
     },
     // Lange Sprechpausen automatisch kürzen.
     trimSilence: {
@@ -97,7 +105,7 @@ router.post('/', upload.array('audio', 12), async (req, res) => {
     return res.status(500).json({ error: e.message });
   }
 
-  buildAndAnalyse(id).catch((err) => {
+  buildAndAnalyse(id, { fertigDatei }).catch((err) => {
     console.error('Verarbeitung fehlgeschlagen:', err);
     const ep = getEpisode(id);
     if (ep) saveEpisode({ ...ep, status: 'error', error: err.message });
@@ -515,7 +523,7 @@ async function storeParts(episodeId, files) {
 }
 
 // ---- Zusammenbauen, transkribieren, Text vorschlagen ----
-async function buildAndAnalyse(id, { withText = true } = {}) {
+async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {}) {
   const settings = getSettings();
   let ep = getEpisode(id);
   if (!ep) return;
@@ -551,18 +559,28 @@ async function buildAndAnalyse(id, { withText = true } = {}) {
       if (outroPath) tmpFiles.push(outroPath);
     }
 
-    // 1) Intro + alle Teile + Outro zusammenfügen (inkl. optionaler Optimierung).
-    melde('Audio wird zusammengebaut …', 0);
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
-    const { duration, size } = await buildEpisode({
-      intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
-      // Wurde bereits auf dem Gerät bearbeitet, hier nicht noch einmal filtern –
-      // das würde nur Rechenzeit kosten und den Klang unnötig zweimal anfassen.
-      enhance: ep.lokalBearbeitet ? null : ep.enhance,
-      trimSilence: ep.lokalBearbeitet ? null : ep.trimSilence,
-      onProgress: ({ prozent }) => melde('Audio wird zusammengebaut …', prozent),
-    });
+
+    // Wurde die Folge im Browser schon fertig zusammengebaut, wird sie direkt
+    // übernommen – der Server startet dann gar kein ffmpeg.
+    let duration, size;
+    if (fertigDatei) {
+      melde('Fertige Folge wird übernommen …');
+      fs.renameSync(fertigDatei.path, outPath);
+      duration = await probeDuration(outPath).catch(() => 0);
+      size = fs.statSync(outPath).size;
+    } else {
+      melde('Audio wird zusammengebaut …', 0);
+      ({ duration, size } = await buildEpisode({
+        intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
+        // Wurde bereits auf dem Gerät bearbeitet, hier nicht noch einmal filtern –
+        // das würde nur Rechenzeit kosten und den Klang unnötig zweimal anfassen.
+        enhance: ep.lokalBearbeitet ? null : ep.enhance,
+        trimSilence: ep.lokalBearbeitet ? null : ep.trimSilence,
+        onProgress: ({ prozent }) => melde('Audio wird zusammengebaut …', prozent),
+      }));
+    }
 
     // 2) Fertige MP3 in den dauerhaften Speicher legen.
     melde('Fertige Folge wird gespeichert …');

@@ -133,18 +133,18 @@ async function renderHome() {
         KI-Sprachoptimierung (gegen Hintergrundgeräusche)
       </label>
       <div id="strengthWrap">
-        <label for="strength">Stärke: <span id="strengthVal">60</span>%</label>
-        <input type="range" id="strength" min="0" max="100" value="60" style="width:100%;" />
+        <label for="strength">Stärke: <span id="strengthVal">50</span>%</label>
+        <input type="range" id="strength" min="0" max="100" value="50" style="width:100%;" />
         <p class="field-hint">Dezent (links) bis stark (rechts). Für Auto/Restaurant eher 60–85%.</p>
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
-        <input type="checkbox" id="trimChk" style="width:auto;" />
+        <input type="checkbox" id="trimChk" checked style="width:auto;" />
         Lange Pausen automatisch kürzen
       </label>
-      <div id="trimWrap" style="opacity:.4;">
+      <div id="trimWrap">
         <label for="trimSec">Ab <span id="trimVal">2,0</span> Sekunden Stille</label>
-        <input type="range" id="trimSec" min="5" max="60" value="20" step="5" style="width:100%;" disabled />
+        <input type="range" id="trimSec" min="5" max="60" value="20" step="5" style="width:100%;" />
         <p class="field-hint">Kürzt lange Denk- und Umschaltpausen, lässt Atempausen stehen.</p>
       </div>
 
@@ -299,6 +299,7 @@ async function submitEpisode() {
 
     if (lokal) {
       try {
+        // 1) Jeden Teil filtern (Rauschen, Pausen, Lautheit).
         const fertige = [];
         let nr = 0;
         for (const datei of quellen) {
@@ -308,6 +309,16 @@ async function submitEpisode() {
           fertige.push([fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3']);
         }
         fertige.forEach(([blob, name]) => fd.append('audio', blob, name));
+
+        // 2) Gleich hier zusammenbauen – dann muss der Server kein ffmpeg starten.
+        const s = await api('/api/settings').catch(() => ({}));
+        const folge = await localAudio.lokalZusammenbauen(
+          fertige.map(([blob]) => blob),
+          { introUrl: s.introUrl, outroUrl: s.outroUrl },
+          (text, pct) => setzeBalken(pct, text)
+        );
+        fd.append('fertig', folge, 'folge.mp3');
+
         fd.append('lokalBearbeitet', 'true');
         lokalGeschafft = true;
       } catch (e) {

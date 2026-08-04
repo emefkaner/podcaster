@@ -28,6 +28,9 @@ router.get('/', (req, res) => {
     imageStyle: s.imageStyle || DEFAULT_STYLE,
     coverUrl: coverUrlOf(s),
     baseImageUrls: baseUrls(s),
+    // Adressen für die Aufbereitung im Browser.
+    introUrl: s.intro ? publicUrl(`assets/${s.intro}`) : '',
+    outroUrl: s.outro ? publicUrl(`assets/${s.outro}`) : '',
   });
 });
 

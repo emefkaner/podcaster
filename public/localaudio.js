@@ -95,6 +95,73 @@ function filterKette({ enhance, trimSilence }) {
 }
 
 /**
+ * Setzt die komplette Folge zusammen: Intro + alle Teile + Outro.
+ * Läuft ebenfalls hier, damit der Server gar kein ffmpeg mehr braucht.
+ * @param {Blob[]} teile bereits aufbereitete Aufnahme-Teile in Reihenfolge
+ * @param {{introUrl?:string, outroUrl?:string}} rahmen
+ * @returns {Promise<Blob>} fertige Folge als MP3
+ */
+export async function lokalZusammenbauen(teile, rahmen, onStatus) {
+  const ffmpeg = await ffmpegHolen(onStatus);
+  const dateien = [];
+
+  // Intro und Outro holen, sofern hinterlegt.
+  const laden = async (url, name) => {
+    if (!url) return null;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    await ffmpeg.writeFile(name, new Uint8Array(await res.arrayBuffer()));
+    return name;
+  };
+
+  try {
+    onStatus?.('Intro und Outro werden geholt …', null);
+    const intro = await laden(rahmen.introUrl, 'intro' + endung(rahmen.introUrl));
+    const outro = await laden(rahmen.outroUrl, 'outro' + endung(rahmen.outroUrl));
+
+    onStatus?.('Teile werden vorbereitet …', null);
+    for (let i = 0; i < teile.length; i++) {
+      const name = `teil${i}.mp3`;
+      await ffmpeg.writeFile(name, new Uint8Array(await teile[i].arrayBuffer()));
+      dateien.push(name);
+    }
+
+    const reihenfolge = [intro, ...dateien, outro].filter(Boolean);
+    const ausgang = 'folge.mp3';
+
+    // Alle Segmente auf ein einheitliches Format bringen und aneinanderhängen.
+    const eingaben = reihenfolge.flatMap((f) => ['-i', f]);
+    const vorbereiten = reihenfolge
+      .map((_, i) => `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo,aresample=44100[a${i}]`)
+      .join(';');
+    const zusammen = reihenfolge.map((_, i) => `[a${i}]`).join('');
+    const filter = `${vorbereiten};${zusammen}concat=n=${reihenfolge.length}:v=0:a=1[out]`;
+
+    onStatus?.('Folge wird zusammengebaut …', 0);
+    await ffmpeg.exec([
+      ...eingaben,
+      '-filter_complex', filter,
+      '-map', '[out]',
+      '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+      ausgang,
+    ]);
+
+    const ergebnis = await ffmpeg.readFile(ausgang);
+    for (const f of [...reihenfolge, ausgang]) await ffmpeg.deleteFile(f).catch(() => {});
+    onStatus?.('Folge fertig.', 100);
+    return new Blob([ergebnis.buffer], { type: 'audio/mpeg' });
+  } catch (e) {
+    for (const f of dateien) await ffmpeg.deleteFile(f).catch(() => {});
+    throw e;
+  }
+}
+
+function endung(url) {
+  const m = String(url || '').match(/\.(wav|mp3|m4a|aac|ogg)(\?|$)/i);
+  return m ? `.${m[1].toLowerCase()}` : '.mp3';
+}
+
+/**
  * Bereitet eine Datei lokal auf und gibt die fertige MP3 zurück.
  * @param {File|Blob} datei
  * @param {{enhance:object, trimSilence:object}} einstellungen
