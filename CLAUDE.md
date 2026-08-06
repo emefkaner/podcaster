@@ -44,6 +44,56 @@ Zwei Repos mit identischem Inhalt:
 Jede Änderung gehört in **beide**. Ist `podcaster` nicht angebunden, per
 `add_repo` holen; der Klon liegt dann unter `/workspace/podcaster`.
 
+## Offener Wunsch: Adobe Enhance mit eigenen Reglern
+
+Ziel des Nutzers. Noch nicht gebaut — hier festgehalten, damit es nicht verloren geht.
+
+`media_enhance_speech` (Adobe-Werkzeug in diesem Chat) trennt eine Aufnahme in
+**drei Spuren**: bereinigte Sprache, Hintergrund, Hall. Genau diese drei soll
+der Nutzer in der App **einzeln rein- und rausdrehen** können — also drei
+Regler statt eines einzigen „Stärke"-Reglers. Das Mischen selbst ist einfach
+(Lautstärke je Spur, dann zusammenmischen) und könnte im Browser laufen; die
+offene Frage ist allein, woher die drei Spuren kommen.
+
+Was dabei **ungeklärt** ist:
+
+- Ob Adobe Enhance eine öffentliche API mit eigenen Zugangsdaten hat, was sie
+  kostet und ob das Abo des Nutzers sie abdeckt. **Von hier nicht prüfbar:**
+  `developer.adobe.com`, `podcast.adobe.com`, `firefly-api.adobe.io` und
+  `ims-na1.adobelogin.com` sind alle gesperrt (curl: 000). Die Werkzeuge in
+  diesem Chat laufen über einen anderen Kanal und sagen nichts darüber aus.
+- Ob der Browser direkt zu Adobe hochladen darf (CORS). Sonst liefe alles über
+  Render — und dessen Bandbreite ist knapp (5 GB frei, davon 70 % verbraucht).
+
+**Der Nutzer testet das zu Hause in seinem freien Netz.** Hier im Sandkasten
+lässt es sich nicht durchspielen — das ist erwartet, kein Fehler.
+
+## Erreichbarkeit vom Sandkasten aus (geprüft)
+
+Nicht raten, ob etwas erreichbar ist — es steht hier:
+
+| Ziel | Status |
+|---|---|
+| `generativelanguage.googleapis.com` | **erreichbar** (Gemini antwortet selbst) |
+| `<account>.r2.cloudflarestorage.com` | **erreichbar** (S3-API antwortet) |
+| `registry.npmjs.org`, `api.anthropic.com` | erreichbar |
+| `pub-….r2.dev` (öffentliche R2-Adresse) | gesperrt |
+| `cinespasten.emefka.com` (die App) | gesperrt |
+| alle Adobe-Hosts, `api.github.com`, `www.google.com` | gesperrt |
+
+Wichtig: In `SETUP-WERTE.md` stehen **keine** R2-Schlüssel (nur Bucket,
+Account-ID, öffentliche Adresse). Ohne Schlüssel kein Zugriff auf die Bilder im
+Speicher, obwohl der Endpunkt erreichbar wäre.
+
+## Infotext — Form
+
+Kurz halten. Der Nutzer will ausdrücklich **keine** langen Show Notes:
+
+- Genau ein Satz je Person, beginnend mit dem Namen.
+- Danach eine Leerzeile und **eine offene, neckische Frage** zum Film, z. B.
+  „Wird es den Cinespasten gefallen, wenn Grogu wieder Frösche isst?"
+- Sonst nichts: keine Überschrift, keine Stichpunkte, kein Fazit-Absatz.
+
 ## Cover erzeugen — Ablauf auf Zuruf
 
 Schreibt der Nutzer im Chat `COVER: <was anders sein soll>`, wird ein
