@@ -399,6 +399,41 @@ router.post('/:id/artwork/select', async (req, res) => {
   res.json(ep);
 });
 
+// Folgen-Cover von einer Adresse übernehmen. Praktisch, wenn das Bild anderswo
+// erzeugt wurde: Adresse einfügen genügt, die App lädt es selbst herunter.
+router.post('/:id/image-from-url', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const url = (req.body?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Bitte eine gültige Adresse angeben.' });
+
+  const tmpFile = path.join(paths.tmp, `von-url-${ep.id}-${Date.now()}`);
+  try {
+    const r = await fetch(url, { redirect: 'follow' });
+    if (!r.ok) throw new Error(`Bild nicht abrufbar (HTTP ${r.status}).`);
+    const typ = r.headers.get('content-type') || '';
+    if (!typ.startsWith('image/')) throw new Error(`Dort liegt kein Bild (${typ || 'unbekannt'}).`);
+
+    const daten = Buffer.from(await r.arrayBuffer());
+    if (!daten.length) throw new Error('Das Bild kam leer zurück.');
+    fs.writeFileSync(tmpFile, daten);
+
+    const ext = typ.includes('png') ? '.png' : typ.includes('webp') ? '.webp' : '.jpg';
+    const key = `episode-images/${ep.id}${ext}`;
+    if (ep.imageKey && ep.imageKey !== key) await deleteKey(ep.imageKey);
+
+    const cur = getEpisode(ep.id);
+    cur.imageUrl = await uploadFile(tmpFile, key, typ);
+    cur.imageKey = key;
+    saveEpisode(cur);
+    res.json(cur);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(tmpFile, { force: true });
+  }
+});
+
 // Titel/Beschreibung bearbeiten (Freigabe/Änderung durch den Nutzer).
 router.put('/:id', (req, res) => {
   const ep = getEpisode(req.params.id);

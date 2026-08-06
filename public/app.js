@@ -656,7 +656,12 @@ async function renderEpisode(id) {
         <div id="artResult"></div>
       </div>
 
-      <label>Eigenes Bild hochladen</label>
+      <label>Bild von einer Adresse übernehmen</label>
+      <input type="text" id="epImageUrl" placeholder="https://… (Adresse des fertigen Covers einfügen)" />
+      <button class="btn" id="epImageUrlBtn" style="margin-top:8px;">Übernehmen</button>
+      <p class="field-hint">Die App lädt das Bild selbst herunter — kein Zwischenspeichern auf dem Rechner nötig.</p>
+
+      <label>Oder eigenes Bild hochladen</label>
       <input type="file" id="epImage" accept="image/*" />
       <button class="btn ghost small" id="epImageBtn" style="margin-top:8px;">Bild speichern</button>
 
@@ -733,6 +738,24 @@ async function renderEpisode(id) {
       $('#artResult').innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
     } finally {
       btn.disabled = false; btn.textContent = '3 Vorschläge generieren';
+    }
+  });
+
+  $('#epImageUrlBtn')?.addEventListener('click', async () => {
+    const url = $('#epImageUrl').value.trim();
+    if (!url) return toast('Bitte eine Adresse einfügen.');
+    const btn = $('#epImageUrlBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}/image-from-url`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      toast('Cover übernommen ✓');
+      renderEpisode(id);
+    } catch (e) {
+      toast('Fehler: ' + e.message, 5000);
+      btn.disabled = false; btn.textContent = 'Übernehmen';
     }
   });
 
