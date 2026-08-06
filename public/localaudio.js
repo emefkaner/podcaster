@@ -59,17 +59,19 @@ async function ffmpegHolen(onStatus) {
   ladeVersuch = (async () => {
     onStatus?.('Audio-Werkzeug wird geladen (einmalig ca. 31 MB) …');
     await skriptLaden(WRAPPER);
-    await skriptLaden(UTIL);
 
     const { FFmpeg } = window.FFmpegWASM;
-    const { toBlobURL } = window.FFmpegUtil;
     const ffmpeg = new FFmpeg();
 
-    // Als Blob-URLs einbinden (aus eigener Herkunft geladen, also unproblematisch).
+    // Wichtig: KEIN classWorkerURL übergeben.
+    // Die Bibliothek erzeugt damit einen Modul-Worker, in dem importScripts()
+    // verboten ist – genau daran scheiterte das Laden des Kerns bisher.
+    // Ohne die Angabe nimmt sie ihr eigenes Arbeitsskript als klassischen Worker,
+    // und weil alle Dateien hier aus derselben Herkunft kommen, ist das erlaubt.
+    const absolut = (p) => new URL(p, window.location.origin).href;
     await ffmpeg.load({
-      coreURL: await toBlobURL(CORE, 'text/javascript'),
-      wasmURL: await toBlobURL(WASM, 'application/wasm'),
-      classWorkerURL: await toBlobURL(WORKER, 'text/javascript'),
+      coreURL: absolut(CORE),
+      wasmURL: absolut(WASM),
     });
 
     ffmpegInstanz = ffmpeg;
