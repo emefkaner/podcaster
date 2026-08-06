@@ -285,7 +285,8 @@ async function submitEpisode() {
 
   const enhance = { enabled: $('#enhanceChk').checked, strength: Number($('#strength').value) };
   const trimSilence = { enabled: $('#trimChk').checked, seconds: Number($('#trimSec').value) / 10 };
-  const lokal = $('#lokalChk')?.checked && localAudio?.lokalMoeglich() && (enhance.enabled || trimSilence.enabled);
+  const willFilter = enhance.enabled || trimSilence.enabled;
+  const canLocal = $('#lokalChk')?.checked && localAudio && localAudio.lokalMoeglich();
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Arbeitet …';
@@ -305,21 +306,17 @@ async function submitEpisode() {
     info.textContent = text;
   };
 
+  const quellen = files.length ? [...files] : [new File([recordedBlob], 'aufnahme.webm')];
   const fd = new FormData();
   fd.append('title', $('#titleInput').value.trim());
-  fd.append('enhance', enhance.enabled ? 'true' : 'false');
-  fd.append('strength', String(enhance.strength));
-  fd.append('trimSilence', trimSilence.enabled ? 'true' : 'false');
-  fd.append('trimSeconds', String(trimSilence.seconds));
+
+  let lokalGeschafft = false;
+  let filterAufServer = willFilter; // wird false, wenn Optimierung übersprungen wird
 
   try {
-    // Falls gewünscht: Rauschunterdrückung und Pausenkürzung hier rechnen.
-    const quellen = files.length ? [...files] : [new File([recordedBlob], 'aufnahme.webm')];
-    let lokalGeschafft = false;
-
-    if (lokal) {
+    // 1) Wenn Optimierung gewünscht und auf dem Gerät möglich: dort komplett rechnen.
+    if (willFilter && canLocal) {
       try {
-        // 1) Jeden Teil filtern (Rauschen, Pausen, Lautheit).
         const fertige = [];
         let nr = 0;
         for (const datei of quellen) {
@@ -330,7 +327,6 @@ async function submitEpisode() {
         }
         fertige.forEach(([blob, name]) => fd.append('audio', blob, name));
 
-        // 2) Gleich hier zusammenbauen – dann muss der Server kein ffmpeg starten.
         const s = await api('/api/settings').catch(() => ({}));
         const folge = await localAudio.lokalZusammenbauen(
           fertige.map(([blob]) => blob),
@@ -338,22 +334,38 @@ async function submitEpisode() {
           (text, pct) => setzeBalken(pct, text)
         );
         fd.append('fertig', folge, 'folge.mp3');
-
         fd.append('lokalBearbeitet', 'true');
         lokalGeschafft = true;
       } catch (e) {
-        // Nicht abbrechen – der Server kann es auch, nur langsamer.
-        // Den echten Grund festhalten, damit sich das Problem beheben lässt.
+        // Nicht still den langsamen Server-Weg nehmen, sondern nachfragen.
         console.error('Lokale Bearbeitung fehlgeschlagen:', e);
         letzterLokalFehler = (e && e.message) ? e.message : String(e);
-        info.innerHTML = `<span class="error">Verarbeitung auf dem Gerät klappte nicht:</span> `
-          + `${escapeHtml(letzterLokalFehler)}<br>Der Server übernimmt (kann länger dauern).`;
-        await new Promise((r) => setTimeout(r, 100));
+        const weiter = confirm(
+          'Die Optimierung auf diesem Gerät ist nicht möglich:\n' + letzterLokalFehler +
+          '\n\nOhne Rauschunterdrückung/Pausenkürzung fortfahren?\n' +
+          'Der Server fügt dann nur Intro und Outro an – das geht schnell.');
+        if (!weiter) throw new Error('__abgebrochen__');
+        filterAufServer = false;
       }
+    } else if (willFilter && !canLocal) {
+      // Optimierung gewünscht, aber auf dem Gerät gar nicht verfügbar.
+      const weiter = confirm(
+        'Rauschunterdrückung/Pausenkürzung ist auf diesem Gerät nicht möglich' +
+        (letzterLokalFehler ? ` (${letzterLokalFehler})` : '') + '.\n\n' +
+        'Ohne diese Optimierung fortfahren?\n' +
+        'Der Server fügt dann nur Intro und Outro an – das geht schnell.');
+      if (!weiter) throw new Error('__abgebrochen__');
+      filterAufServer = false;
     }
 
+    // 2) Nicht auf dem Gerät gebaut? Rohteile hochladen. Filter laufen auf dem
+    //    Server nur, wenn ausdrücklich gewünscht – sonst wird bloß zusammengefügt.
     if (!lokalGeschafft) {
       for (const datei of quellen) fd.append('audio', datei, datei.name);
+      fd.append('enhance', (filterAufServer && enhance.enabled) ? 'true' : 'false');
+      fd.append('strength', String(enhance.strength));
+      fd.append('trimSilence', (filterAufServer && trimSilence.enabled) ? 'true' : 'false');
+      fd.append('trimSeconds', String(trimSilence.seconds));
     }
 
     const ep = await uploadMitFortschritt('/api/episodes', fd, (geladen, gesamt) => {
@@ -365,7 +377,7 @@ async function submitEpisode() {
     toast('Hochgeladen – Verarbeitung läuft.');
     go(`/episode/${encodeURIComponent(ep.id)}`);
   } catch (err) {
-    toast('Fehler: ' + err.message, 4500);
+    if (err.message !== '__abgebrochen__') toast('Fehler: ' + err.message, 4500);
     $('#uploadBar')?.remove();
     btn.disabled = false;
     btn.textContent = 'Verarbeiten & als Entwurf anlegen';
@@ -453,7 +465,7 @@ function folgeZeile(e) {
 
 // ================= EPISODE-DETAIL / REVIEW =================
 async function renderEpisode(id) {
-  pageTitle.textContent = 'Folge';
+  // Marke bleibt oben stehen, die Seite ergibt sich aus dem Inhalt.
   view.innerHTML = '<p class="muted">Lade …</p>';
   let ep, settings = {};
   try {
@@ -1026,7 +1038,7 @@ async function deleteEpisode(id) {
 
 // ================= EINSTELLUNGEN =================
 async function renderSettings() {
-  pageTitle.textContent = 'Einstellungen';
+  // Marke bleibt oben stehen, die Seite ergibt sich aus dem Inhalt.
   view.innerHTML = '<p class="muted">Lade …</p>';
   const s = await api('/api/settings');
 

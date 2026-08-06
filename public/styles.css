@@ -106,17 +106,26 @@ header.topbar {
 }
 
 header.topbar h1 {
-  font-size: 1.1rem;
+  font-size: 1.7rem;
   margin: 0;
-  font-weight: 700;
-  letter-spacing: -.01em;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  line-height: 1;
   background: var(--grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-header.topbar .logo { font-size: 1.35rem; }
-.topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+header.topbar .logo { font-size: 1.9rem; }
+.topbar-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.brand .tagline {
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 /* ---------- Menü ---------- */
 .menu-wrap { position: relative; flex: none; }
