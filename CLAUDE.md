@@ -88,7 +88,11 @@ lässt es sich nicht durchspielen — das ist erwartet, kein Fehler.
 
 ## Erreichbarkeit vom Sandkasten aus (geprüft)
 
-Nicht raten, ob etwas erreichbar ist — es steht hier:
+**Stand 06.08.2026: Der Nutzer hat die Netzsperre aufgehoben** — seither ist
+z. B. `d8j0ntlcm91z4.cloudfront.net` (Higgsfield-Ergebnisse) erreichbar, und
+erzeugte Cover lassen sich hier ansehen und prüfen. Die Tabelle unten
+beschreibt den **gesperrten** Zustand; ob er wieder gilt, vor Gebrauch mit
+einem kurzen `curl` prüfen statt raten.
 
 | Ziel | Status |
 |---|---|
@@ -146,9 +150,11 @@ Folgen-Cover erzeugt. Regeln dafür:
    `https://raw.githubusercontent.com/emefkaner/podcaster/main/cover-vorlagen/03-hail-mary.jpg`.
    `media_upload` scheitert: `upload.higgsfield.ai` ist vom Sandkasten gesperrt.
 
-   **Das fertige Bild kann ich nicht ansehen** — die Ergebnis-Adresse
-   (`d8j0ntlcm91z4.cloudfront.net`) ist ebenfalls gesperrt. Beurteilen muss es
-   der Nutzer.
+   **Das fertige Bild immer selbst herunterladen und ansehen** (seit der
+   Netzfreigabe möglich) und gegen den Auftrag prüfen, BEVOR es dem Nutzer
+   gezeigt wird. Beim ersten Mandalorian-Cover fehlte emefkas Brille und eine
+   Unterzeile war aus der Vorlage durchgesickert — solche Fehler selbst
+   abfangen. Ist die Adresse gesperrt (curl 000), muss der Nutzer beurteilen.
 3. **Bei Unklarheiten nachfragen**, statt etwas anzunehmen.
 4. Passt das Bild: die Adresse nennen. Der Nutzer fügt sie in der Folge unter
    „Bild von einer Adresse übernehmen" ein.
