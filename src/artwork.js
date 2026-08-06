@@ -97,15 +97,37 @@ export async function generateCandidates({ basePaths, wish, style, title, headli
   parts.push({ text: prompt });
 
   // Die Vorschläge parallel anfordern – jeder Aufruf liefert ein Bild.
+  // TEXT mit zulassen: Manche Bildmodelle verweigern die Antwort, wenn sie
+  // ausschließlich ein Bild liefern dürfen.
   const jobs = Array.from({ length: count }, () =>
     ai.models.generateContent({
       model: config.geminiImageModel,
       contents: [{ role: 'user', parts }],
-      config: { responseModalities: ['IMAGE'] },
+      config: { responseModalities: ['TEXT', 'IMAGE'] },
     })
   );
 
-  const settled = await Promise.allSettled(jobs);
+  let settled = await Promise.allSettled(jobs);
+
+  // Manche Bildmodelle sind nur unter ihrem Vorschau-Namen erreichbar. Schlägt
+  // alles fehl, denselben Auftrag einmal damit versuchen.
+  const alleFehl = settled.every((r) => r.status === 'rejected' || !extractImage(r.value));
+  if (alleFehl && !config.geminiImageModel.endsWith('-preview')) {
+    const zweitname = `${config.geminiImageModel}-preview`;
+    const zweiterVersuch = await Promise.allSettled(
+      Array.from({ length: count }, () =>
+        ai.models.generateContent({
+          model: zweitname,
+          contents: [{ role: 'user', parts }],
+          config: { responseModalities: ['TEXT', 'IMAGE'] },
+        })
+      )
+    );
+    if (zweiterVersuch.some((r) => r.status === 'fulfilled' && extractImage(r.value))) {
+      console.log(`Bildmodell nur als "${zweitname}" erreichbar.`);
+      settled = zweiterVersuch;
+    }
+  }
   const images = [];
   const errors = [];
 
@@ -113,7 +135,7 @@ export async function generateCandidates({ basePaths, wish, style, title, headli
     if (r.status === 'rejected') { errors.push(r.reason?.message || String(r.reason)); continue; }
     const img = extractImage(r.value);
     if (img) images.push(img);
-    else errors.push('Antwort enthielt kein Bild.');
+    else errors.push(warumKeinBild(r.value));
   }
 
   if (!images.length) {
@@ -126,6 +148,29 @@ export async function generateCandidates({ basePaths, wish, style, title, headli
     );
   }
   return images;
+}
+
+// Wenn kein Bild ankam: benennen, woran es lag. Ohne diese Angaben bleibt nur
+// Raten – das Modell nennt den Grund meist selbst.
+function warumKeinBild(response) {
+  const kandidat = response?.candidates?.[0];
+  const grund = kandidat?.finishReason;
+  const meldung = kandidat?.finishMessage;
+  const text = (response?.text || '').trim();
+  const artenImRueckgabe = (kandidat?.content?.parts || [])
+    .map((p) => Object.keys(p).filter((k) => p[k] != null).join('+'))
+    .filter(Boolean);
+
+  const teile = ['Modell lieferte kein Bild'];
+  if (grund) teile.push(`Abschlussgrund: ${grund}`);
+  if (meldung) teile.push(meldung);
+  if (response?.promptFeedback?.blockReason) {
+    teile.push(`Anfrage abgelehnt: ${response.promptFeedback.blockReason}`);
+  }
+  if (artenImRueckgabe.length) teile.push(`erhalten: ${artenImRueckgabe.join(', ')}`);
+  if (text) teile.push(`Text der Antwort: "${text.slice(0, 160)}"`);
+  if (teile.length === 1) teile.push(`Modell: ${config.geminiImageModel}`);
+  return teile.join(' — ');
 }
 
 // Lange Anbieter-Meldungen auf das Wesentliche eindampfen.
