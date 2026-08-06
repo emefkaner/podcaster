@@ -1099,6 +1099,14 @@ async function renderSettings() {
     </div>
 
     <div class="card">
+      <h2 class="section" style="margin-top:0;">🎭 Wer spricht im Podcast</h2>
+      <p class="muted">Fließt in jeden Infotext ein — die KI schreibt dann in eurem Sinne und spielt an, wie ihr auf den Film reagiert.</p>
+      <textarea id="s_crew" style="min-height:130px;">${escapeHtml(s.crew || '')}</textarea>
+      <p class="field-hint">Eine Zeile pro Person: Name, Eigenheiten, typische Reaktionen.</p>
+      <button class="btn ghost small" id="saveCrewBtn" style="margin-top:8px;">Speichern</button>
+    </div>
+
+    <div class="card">
       <h2 class="section" style="margin-top:0;">🎨 Cover-Generator</h2>
       <p class="muted">Lade hier euer Ausgangsbild hoch (z. B. das Team-Foto). Bei jeder Folge wird es dann passend zum Thema abgewandelt — mehrere Bilder helfen, dass eure Gesichter erkennbar bleiben.</p>
 
@@ -1162,6 +1170,14 @@ async function renderSettings() {
   });
 
   loadStatus();
+
+  $('#saveCrewBtn').addEventListener('click', async () => {
+    await api('/api/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crew: $('#s_crew').value }),
+    });
+    toast('Gespeichert.');
+  });
 
   $('#baseUploadBtn').addEventListener('click', async () => {
     const files = $('#baseFiles').files;

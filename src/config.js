@@ -85,4 +85,6 @@ export const defaultSettings = {
   baseImages: [],
   imageStyle: '',
   coverHeadline: 'DIE CINESPASTEN',
+  // Wer im Podcast spricht und wie – fließt in jeden Infotext ein.
+  crew: '',
 };

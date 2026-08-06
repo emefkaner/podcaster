@@ -8,6 +8,7 @@ import { requireAuth } from '../auth.js';
 import { getSettings, saveSettings } from '../store.js';
 import { uploadFile, deleteKey, publicUrl, downloadToFile } from '../storage.js';
 import { DEFAULT_STYLE } from '../artwork.js';
+import { DEFAULT_CREW } from '../describe.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -26,6 +27,7 @@ router.get('/', (req, res) => {
   res.json({
     ...s,
     imageStyle: s.imageStyle || DEFAULT_STYLE,
+    crew: s.crew || DEFAULT_CREW,
     coverUrl: coverUrlOf(s),
     baseImageUrls: baseUrls(s),
     // Adressen für die Aufbereitung im Browser. Bewusst über die eigene App
@@ -39,7 +41,7 @@ router.get('/', (req, res) => {
 // Textfelder speichern.
 router.put('/', (req, res) => {
   const allowed = ['title', 'description', 'author', 'ownerName', 'ownerEmail', 'language',
-                   'category', 'explicit', 'sourceFeedUrl', 'imageStyle', 'coverHeadline'];
+                   'category', 'explicit', 'sourceFeedUrl', 'imageStyle', 'coverHeadline', 'crew'];
   const patch = {};
   for (const key of allowed) {
     if (key in req.body) patch[key] = key === 'explicit' ? Boolean(req.body[key]) : req.body[key];
