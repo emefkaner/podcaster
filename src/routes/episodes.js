@@ -132,6 +132,78 @@ router.post('/:id/parts', upload.array('audio', 12), async (req, res) => {
   }
 });
 
+// Einen Aufnahme-Teil über die App ausliefern. Nötig, damit der Browser die
+// Originale erneut bearbeiten kann – aus dem Speicher direkt darf er nicht.
+router.get('/:id/parts/:partId/file', async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const part = (ep.parts || []).find((p) => p.id === req.params.partId);
+  if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
+
+  const lokal = path.join(paths.tmp, `teil-${ep.id}-${part.id}${path.extname(part.key)}`);
+  try {
+    let datei = lokal;
+    if (!fs.existsSync(lokal)) {
+      const geholt = await downloadToFile(part.key, lokal);
+      if (!geholt || !fs.existsSync(geholt)) {
+        return res.status(404).json({ error: 'Aufnahme nicht im Speicher gefunden' });
+      }
+      datei = geholt;
+    }
+    res.sendFile(path.resolve(datei));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Neu berechnete Folge übernehmen (im Browser aus den Originalen erzeugt).
+const fertigUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, paths.tmp),
+    filename: (req, file, cb) => cb(null, `neu-${Date.now()}.mp3`),
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
+
+router.post('/:id/fertig', fertigUpload.single('fertig'), async (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (!req.file) return res.status(400).json({ error: 'Keine Datei erhalten' });
+
+  try {
+    const audioKey = `episodes/${ep.id}.mp3`;
+    const url = await uploadFile(req.file.path, audioKey, 'audio/mpeg');
+    const dauer = await probeDuration(req.file.path).catch(() => ep.duration || 0);
+
+    const cur = getEpisode(ep.id);
+    cur.audioKey = audioKey;
+    // Anhängsel erzwingt, dass Abspieler die neue Fassung laden.
+    cur.audioUrl = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
+    cur.duration = dauer;
+    cur.size = fs.statSync(req.file.path).size;
+    cur.needsRebuild = false;
+    // Eingestellte Werte mitschreiben, damit die Regler den Stand zeigen.
+    if (req.body?.strength) {
+      cur.enhance = {
+        enabled: req.body.enhance !== 'false',
+        strength: Math.min(100, Math.max(0, Number(req.body.strength) || 50)),
+      };
+    }
+    if (req.body?.trimSeconds) {
+      cur.trimSilence = {
+        enabled: req.body.trimSilence !== 'false',
+        seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSeconds) || 2)),
+      };
+    }
+    saveEpisode(cur);
+    res.json(cur);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(req.file.path, { force: true });
+  }
+});
+
 // Wellenform eines Teils liefern (wird zwischengespeichert, da die Berechnung dauert).
 router.get('/:id/parts/:partId/peaks', async (req, res) => {
   const ep = getEpisode(req.params.id);
@@ -543,6 +615,16 @@ router.delete('/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Löscht eine Datei nur, wenn sie im Arbeitsordner liegt. Schützt davor, aus
+// Versehen die dauerhaft gespeicherten Aufnahmen zu entfernen.
+function nurArbeitsdateiLoeschen(datei) {
+  if (!datei) return;
+  const voll = path.resolve(datei);
+  if (voll.startsWith(path.resolve(paths.tmp) + path.sep)) {
+    fs.rmSync(voll, { force: true });
+  }
+}
+
 // ---- Aufnahme-Teile dauerhaft ablegen ----
 // Die Rohaufnahmen bleiben erhalten, damit die Folge nach Umsortieren oder
 // Nachreichen weiterer Teile jederzeit neu zusammengebaut werden kann.
@@ -690,7 +772,9 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     saveEpisode(ep);
   } finally {
     clearTimeout(waechter);
-    for (const f of tmpFiles) fs.rmSync(f, { force: true });
+    // NUR Arbeitsdateien löschen. Ohne R2 liefert downloadToFile den Pfad der
+    // gespeicherten Originaldatei zurück – die darf keinesfalls gelöscht werden.
+    for (const f of tmpFiles) nurArbeitsdateiLoeschen(f);
   }
 }
 

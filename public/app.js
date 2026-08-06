@@ -341,7 +341,9 @@ async function submitEpisode() {
             (text, pct) => setzeBalken(pct, `Teil ${nr} von ${quellen.length}: ${text}`));
           fertige.push([fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3']);
         }
-        fertige.forEach(([blob, name]) => fd.append('audio', blob, name));
+        // Wichtig: die ORIGINALE ablegen, nicht die bearbeitete Fassung.
+        // Nur so lässt sich die Optimierung später anders einstellen.
+        quellen.forEach((datei) => fd.append('audio', datei, datei.name));
 
         const s = await api('/api/settings').catch(() => ({}));
         const folge = await localAudio.lokalZusammenbauen(
@@ -621,6 +623,28 @@ async function renderEpisode(id) {
           anhand des Titels und schreibt daraus. Optional kannst du Stichworte mitgeben:</p>
         <input type="text" id="descHints" placeholder="optional: z. B. langer Spoilerteil, Matthew war begeistert" />` : ''}
 
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
+        <b style="font-size:.95rem;">🎚️ Klang nachjustieren</b>
+        <p class="field-hint" style="margin-top:4px;">Wird immer aus den <b>Originalaufnahmen</b> neu berechnet — du kannst also beliebig oft probieren, ohne Qualität zu verlieren.</p>
+
+        <label style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="reEnh" ${ep.enhance?.enabled ? 'checked' : ''} style="width:auto;" />
+          Rauschunterdrückung
+        </label>
+        <label for="reStrength">Stärke: <span id="reStrengthVal">${ep.enhance?.strength ?? 50}</span>%</label>
+        <input type="range" id="reStrength" min="0" max="100" value="${ep.enhance?.strength ?? 50}" style="width:100%;" />
+        <p class="field-hint">Klingt es dumpf oder blechern, war es zu stark — dann runter auf 20–30 %.</p>
+
+        <label style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <input type="checkbox" id="reTrim" ${ep.trimSilence?.enabled ? 'checked' : ''} style="width:auto;" />
+          Lange Pausen kürzen (ab <span id="reTrimVal">${(ep.trimSilence?.seconds ?? 2).toFixed(1).replace('.', ',')}</span> s)
+        </label>
+        <input type="range" id="reTrimSec" min="5" max="60" step="5" value="${Math.round((ep.trimSilence?.seconds ?? 2) * 10)}" style="width:100%;" />
+
+        <button class="btn" id="reBtn" style="margin-top:10px;">Neu berechnen</button>
+        <div id="reInfo"></div>
+      </div>
+
       <label style="margin-top:20px;">Aufnahme-Teile (Reihenfolge = Abspielreihenfolge)</label>
       <div id="partList">${renderParts(ep)}</div>
       <input type="file" id="addParts" accept="audio/*,video/*" multiple style="margin-top:8px;" />
@@ -742,6 +766,7 @@ async function renderEpisode(id) {
   }, true);
 
   wireParts(id, ep);
+  wireNachjustieren(id, ep);
 
   // Beim Öffnen bereits vorhandene Vorschläge anzeigen.
   if (ep.artworkCandidates?.length) showCandidates(id, ep.artworkCandidates);
@@ -880,6 +905,79 @@ async function renderEpisode(id) {
   });
 
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
+}
+
+// Klang nachjustieren: Originale holen, im Browser neu bearbeiten, Folge ersetzen.
+function wireNachjustieren(id, ep) {
+  const st = $('#reStrength'), tr = $('#reTrimSec'), info = $('#reInfo'), btn = $('#reBtn');
+  if (!btn) return;
+
+  st.addEventListener('input', () => { $('#reStrengthVal').textContent = st.value; });
+  tr.addEventListener('input', () => {
+    $('#reTrimVal').textContent = (tr.value / 10).toFixed(1).replace('.', ',');
+  });
+
+  btn.addEventListener('click', async () => {
+    if (!localAudio?.lokalMoeglich()) {
+      return toast('Neu berechnen geht nur auf einem Rechner, nicht am Handy.', 4500);
+    }
+    const teile = ep.parts || [];
+    if (!teile.length) return toast('Keine Originalaufnahmen vorhanden.');
+
+    const enhance = { enabled: $('#reEnh').checked, strength: Number(st.value) };
+    const trimSilence = { enabled: $('#reTrim').checked, seconds: Number(tr.value) / 10 };
+
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Rechnet …';
+    info.innerHTML = `<div class="progress" style="margin-top:10px;"><div class="progress-fill" id="reFill"></div></div>
+                      <p class="field-hint" id="reText">Originale werden geholt …</p>`;
+    const setz = (pct, text) => {
+      const f = $('#reFill');
+      if (typeof pct === 'number') { f.classList.remove('indeterminate'); f.style.width = `${pct}%`; }
+      else f.classList.add('indeterminate');
+      $('#reText').textContent = text;
+    };
+    arbeitetGerade = true;
+
+    try {
+      // Originale über die App holen (aus dem Speicher direkt darf der Browser nicht).
+      const originale = [];
+      for (let i = 0; i < teile.length; i++) {
+        setz(null, `Original ${i + 1} von ${teile.length} wird geholt …`);
+        const r = await fetch(`/api/episodes/${encodeURIComponent(id)}/parts/${encodeURIComponent(teile[i].id)}/file`,
+          { credentials: 'same-origin' });
+        if (!r.ok) throw new Error(`Aufnahme ${i + 1} nicht abrufbar (HTTP ${r.status}).`);
+        originale.push(new File([await r.blob()], teile[i].name || `teil${i}.mp3`));
+      }
+
+      const bearbeitet = [];
+      for (let i = 0; i < originale.length; i++) {
+        bearbeitet.push(await localAudio.lokalAufbereiten(originale[i], { enhance, trimSilence },
+          (text, pct) => setz(pct, `Teil ${i + 1} von ${originale.length}: ${text}`)));
+      }
+
+      const s = await api('/api/settings').catch(() => ({}));
+      const folge = await localAudio.lokalZusammenbauen(bearbeitet,
+        { introUrl: s.introUrl, outroUrl: s.outroUrl }, (text, pct) => setz(pct, text));
+
+      setz(null, 'Neue Fassung wird hochgeladen …');
+      const fd = new FormData();
+      fd.append('fertig', folge, 'folge.mp3');
+      fd.append('enhance', String(enhance.enabled));
+      fd.append('strength', String(enhance.strength));
+      fd.append('trimSilence', String(trimSilence.enabled));
+      fd.append('trimSeconds', String(trimSilence.seconds));
+      await uploadMitFortschritt(`/api/episodes/${encodeURIComponent(id)}/fertig`, fd,
+        (a, b) => setz(Math.round((a / b) * 100), `Wird hochgeladen: ${Math.round((a / b) * 100)} %`));
+
+      arbeitetGerade = false;
+      toast('Neu berechnet ✓ — jetzt anhören.');
+      renderEpisode(id);
+    } catch (e) {
+      arbeitetGerade = false;
+      info.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+      btn.disabled = false; btn.textContent = 'Neu berechnen';
+    }
+  });
 }
 
 // Liste der Aufnahme-Teile mit Sortier- und Löschknöpfen.
