@@ -123,10 +123,32 @@ Folgen-Cover erzeugt. Regeln dafür:
    öfter vor; für die gibt es keine Vorlage, also **vorher ein Bild der Person
    erfragen**. Niemals eine Figur dazuerfinden.
 1. **Immer nur ein Bild auf einmal.** Kein Stapel, keine Varianten parallel.
-2. **Höchstens 1 Credit pro Bild.** Geprüft: `nano_banana_2_lite` kostet
-   genau 1 Credit (1k, 1:1); `nano_banana_2` kostet 1,5 und ist damit zu teuer.
-   Vor dem Erzeugen mit `get_cost: true` gegenprüfen, wenn etwas anderes
-   verwendet werden soll.
+2. **Modell: `flux_2` (variant `pro`, 1k).** Kostet genau 1 Credit und ist das
+   einzige geprüfte Modell, das beides kann. Vor dem Erzeugen immer mit
+   `get_cost: true` gegenprüfen.
+
+   Durchgetestet am 06.08.2026 mit `cover-vorlagen/03` als Referenz:
+
+   | Modell | Ergebnis |
+   |---|---|
+   | `flux_2` (Black Forest Labs) | **läuft, Prompt wird befolgt** |
+   | `nano_banana_2_lite` (Google) | `nsfw` — abgelehnt, mit 1 wie mit 2 Referenzen |
+   | `seedream_v4_5` (Bytedance) | `nsfw` — ebenso |
+   | `soul_2` (Higgsfield) | läuft, aber **unbrauchbar**: schreibt den Prompt automatisch um und beschreibt dabei nur das Referenzbild — heraus kommt ein Klon der Vorlage. `enhance_prompt: false` wird nicht unterstützt. |
+
+   `nsfw` ist Higgsfields Sammelstatus für „vom Filter abgelehnt", ein Grund
+   wird nicht mitgeliefert. Nacktheit kann es nicht sein; vermutlich greift der
+   Ähnlichkeitsschutz für reale Personen, weil die Vorlagen erkennbare
+   Karikaturen sind. Nicht erneut durchprobieren — direkt `flux_2` nehmen.
+
+   Referenzbilder kommen über `media_import_url` mit der Rohadresse aus dem
+   öffentlichen Repo hinein, z. B.
+   `https://raw.githubusercontent.com/emefkaner/podcaster/main/cover-vorlagen/03-hail-mary.jpg`.
+   `media_upload` scheitert: `upload.higgsfield.ai` ist vom Sandkasten gesperrt.
+
+   **Das fertige Bild kann ich nicht ansehen** — die Ergebnis-Adresse
+   (`d8j0ntlcm91z4.cloudfront.net`) ist ebenfalls gesperrt. Beurteilen muss es
+   der Nutzer.
 3. **Bei Unklarheiten nachfragen**, statt etwas anzunehmen.
 4. Passt das Bild: die Adresse nennen. Der Nutzer fügt sie in der Folge unter
    „Bild von einer Adresse übernehmen" ein.
