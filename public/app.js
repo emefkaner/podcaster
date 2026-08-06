@@ -612,9 +612,10 @@ async function renderEpisode(id) {
       <p class="field-hint">Das ist der Text, der später im Podcast erscheint. Prüfe/ändere ihn und speichere.</p>
 
       <div class="btn-row" style="margin-top:12px;">
-        <button class="btn" id="saveBtn">Speichern</button>
-        <button class="btn ghost small" id="regenBtn" title="Neuen KI-Vorschlag">↻ Text</button>
+        <button class="btn primary" id="saveBtn">💾 Änderungen speichern</button>
+        <button class="btn ghost" id="regenBtn" title="Text von der KI neu schreiben lassen">↻ Text</button>
       </div>
+      <p class="field-hint" id="saveHint">Alles gespeichert.</p>
       ${!ep.transcript?.trim() ? `
         <p class="field-hint">Kein Transkript vorhanden — „↻ Text" recherchiert dann den Film
           anhand des Titels und schreibt daraus. Optional kannst du Stichworte mitgeben:</p>
@@ -700,14 +701,45 @@ async function renderEpisode(id) {
     ${ep.transcript ? `<details class="card"><summary>Transkript anzeigen</summary><p class="muted" style="white-space:pre-wrap;margin-top:10px;">${escapeHtml(ep.transcript)}</p></details>` : ''}
   `;
 
-  $('#saveBtn').addEventListener('click', async () => {
+  // Ungespeicherte Änderungen sichtbar machen und beim Verlassen warnen –
+  // sonst ist unklar, ob Titel und Text schon gesichert sind.
+  const hinweis = $('#saveHint');
+  let ungespeichert = false;
+  const markiereGeaendert = () => {
+    ungespeichert = true;
+    hinweis.innerHTML = '<span style="color:var(--warn);">● Nicht gespeicherte Änderungen</span>';
+  };
+  const markiereGesichert = () => {
+    ungespeichert = false;
+    hinweis.innerHTML = '<span class="success">✓ Alles gespeichert</span>';
+  };
+  $('#epTitle').addEventListener('input', markiereGeaendert);
+  $('#epDesc').addEventListener('input', markiereGeaendert);
+  markiereGesichert();
+
+  const speichern = async () => {
     await api(`/api/episodes/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: $('#epTitle').value, description: $('#epDesc').value }),
     });
-    toast('Gespeichert.');
+    markiereGesichert();
+  };
+
+  $('#saveBtn').addEventListener('click', async () => {
+    const btn = $('#saveBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Speichert …';
+    try { await speichern(); toast('Gespeichert ✓'); }
+    catch (e) { toast('Fehler: ' + e.message); }
+    finally { btn.disabled = false; btn.innerHTML = '💾 Änderungen speichern'; }
   });
+
+  // Beim Zurückgehen nicht kommentarlos verwerfen.
+  $('.back')?.addEventListener('click', (e) => {
+    if (ungespeichert && !confirm('Es gibt nicht gespeicherte Änderungen. Trotzdem zurück?')) {
+      e.preventDefault(); e.stopPropagation();
+    }
+  }, true);
 
   wireParts(id, ep);
 
@@ -783,8 +815,8 @@ async function renderEpisode(id) {
         body: JSON.stringify({ hinweise }),
       });
       $('#epDesc').value = r.vorschlag;
-      $('#hintBox')?.classList.add('hidden');
-      toast('Neuer Vorschlag eingesetzt — prüfen und speichern.');
+      markiereGeaendert(); // Vorschlag ist noch nicht gesichert
+      toast('Neuer Vorschlag eingesetzt — prüfen und speichern.', 4000);
     } catch (e) {
       toast('Fehler: ' + e.message, 4500);
     } finally {

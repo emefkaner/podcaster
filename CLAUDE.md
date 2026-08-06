@@ -25,6 +25,31 @@ Deshalb gilt:
 - Nach Änderungen: auf beide Branches pushen, da Render von `master` baut.
   `git push origin main && git push origin main:master`
 
+## Cover erzeugen — Ablauf auf Zuruf
+
+Schreibt der Nutzer im Chat `COVER: <was anders sein soll>`, wird ein
+Folgen-Cover erzeugt. Regeln dafür:
+
+1. **Immer nur ein Bild auf einmal.** Kein Stapel, keine Varianten parallel.
+2. **Höchstens 1 Credit pro Bild.** Geprüft: `nano_banana_2_lite` kostet
+   genau 1 Credit (1k, 1:1); `nano_banana_2` kostet 1,5 und ist damit zu teuer.
+   Vor dem Erzeugen mit `get_cost: true` gegenprüfen, wenn etwas anderes
+   verwendet werden soll.
+3. **Bei Unklarheiten nachfragen**, statt etwas anzunehmen.
+4. Passt das Bild: die Adresse nennen. Der Nutzer fügt sie in der Folge unter
+   „Bild von einer Adresse übernehmen" ein.
+5. Passt es nicht: Änderungswunsch abwarten und **ein** neues erzeugen.
+
+Die Referenzbilder (die bisherigen Cover) müssen als Datei vorliegen; über
+`media_upload` hochladen und als Referenz mitgeben, damit Figuren und
+Zeichenstil erhalten bleiben.
+
+Hintergrund: Googles Bildmodelle lehnen diese Aufträge mit
+`PROHIBITED_CONTENT` ab, weil erkennbare Personen in den Vorlagen sind.
+Higgsfields Entwickler-API antwortet mit 403 (eigenes Produkt, nicht im
+Ultra-Abo enthalten). Der Weg über diesen Chat ist deshalb der einzige, der
+mit den vorhandenen Credits funktioniert.
+
 ## Sprache
 
 Antworten und Commit-Nachrichten auf Deutsch.
