@@ -28,12 +28,15 @@ function buildPrompt({ style, wish, title, headline, subtitle }) {
   return [
     style?.trim() || DEFAULT_STYLE,
     '',
+    'Die Referenzbilder sind gezeichnete Comic-Illustrationen einer Podcast-Reihe,',
+    'keine Fotografien. Erstelle eine weitere Illustration derselben Reihe.',
+    '',
     'UNVERÄNDERLICH – halte dich strikt daran:',
-    '1. Übernimm die Personen aus den Referenzbildern unverändert: gleiche Gesichtszüge,',
-    '   Frisuren, Bärte, Brillen und Hauttöne. Es sind dieselben Personen in derselben',
-    '   Anzahl und derselben Reihenfolge von links nach rechts.',
-    '2. Quadratisches Bild. Die Gruppe füllt die untere Bildhälfte als Brustbild,',
-    '   oben bleibt Platz für den Titel.',
+    '1. Behalte die gezeichneten Figuren aus den Referenzbildern bei: gleicher',
+    '   Zeichenstil, gleiches Aussehen der Figuren, gleiche Anzahl und gleiche',
+    '   Reihenfolge von links nach rechts. Es ist dieselbe Illustrationsreihe.',
+    '2. Quadratisches Bild. Die Figurengruppe füllt die untere Bildhälfte als',
+    '   Brustbild, oben bleibt Platz für den Titel.',
     head
       ? `3. Setze oben in großer, gut lesbarer Versalschrift den Titel: „${head}".\n` +
         '   Schreibe ihn exakt so, ohne Tippfehler, mit klarem Kontrast zum Hintergrund.'
@@ -42,7 +45,7 @@ function buildPrompt({ style, wish, title, headline, subtitle }) {
       ? `4. Setze unten mittig die kleinere Unterzeile: „${subtitle}".`
       : '',
     '',
-    'PASSE AN DEN FILM AN: Kleidung und Ausrüstung der Personen, die Kulisse im',
+    'PASSE AN DEN FILM AN: Kleidung und Ausrüstung der Figuren, die Kulisse im',
     'Hintergrund sowie Farbstimmung und Lichtsetzung. Das Cover soll das Genre des',
     'Films sofort erkennen lassen – eine Weltraumfolge wirkt anders als ein Krimi.',
     '',
@@ -160,6 +163,13 @@ function warumKeinBild(response) {
   const artenImRueckgabe = (kandidat?.content?.parts || [])
     .map((p) => Object.keys(p).filter((k) => p[k] != null).join('+'))
     .filter(Boolean);
+
+  // Der häufigste Fall verdient Klartext statt Fachbegriff.
+  if (grund === 'PROHIBITED_CONTENT' || response?.promptFeedback?.blockReason === 'PROHIBITED_CONTENT') {
+    return 'Google hat die Anfrage abgelehnt. Das passiert, wenn der Auftrag so klingt, '
+         + 'als sollten Gesichter echter Personen nachgebildet werden. Beschreibe die '
+         + 'Ausgangsbilder als gezeichnete Figuren – oder nutze ein anderes Bildmodell.';
+  }
 
   const teile = ['Modell lieferte kein Bild'];
   if (grund) teile.push(`Abschlussgrund: ${grund}`);
