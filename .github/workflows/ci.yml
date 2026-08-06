@@ -1,0 +1,39 @@
+name: Prüfung
+
+# Läuft bei jedem Push und bei Pull Requests. Weil Render mit "On Commit"
+# sofort deployt, ist das hier die letzte Stelle, an der ein kaputter Stand
+# auffallen kann, bevor er in der App landet.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruefung:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Pakete installieren
+        run: npm ci
+
+      - name: Syntax aller JavaScript-Dateien
+        run: |
+          set -e
+          for f in $(find src public test -name '*.js' -o -name '*.mjs' | grep -v /vendor/); do
+            node --check "$f"
+          done
+          echo "Syntax in Ordnung."
+
+      - name: Browser bereitstellen
+        run: npx playwright install --with-deps chromium
+
+      - name: Rauchtest im Browser
+        run: node test/smoke.mjs
