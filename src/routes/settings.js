@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
 import { getSettings, saveSettings } from '../store.js';
-import { uploadFile, deleteKey, publicUrl } from '../storage.js';
+import { uploadFile, deleteKey, publicUrl, downloadToFile } from '../storage.js';
 import { DEFAULT_STYLE } from '../artwork.js';
 
 const router = express.Router();
@@ -28,9 +28,11 @@ router.get('/', (req, res) => {
     imageStyle: s.imageStyle || DEFAULT_STYLE,
     coverUrl: coverUrlOf(s),
     baseImageUrls: baseUrls(s),
-    // Adressen für die Aufbereitung im Browser.
-    introUrl: s.intro ? publicUrl(`assets/${s.intro}`) : '',
-    outroUrl: s.outro ? publicUrl(`assets/${s.outro}`) : '',
+    // Adressen für die Aufbereitung im Browser. Bewusst über die eigene App
+    // statt direkt aus dem Speicher: Der Browser darf fremde Adressen nur mit
+    // ausdrücklicher Freigabe abrufen, und die schickt R2 nicht mit.
+    introUrl: s.intro ? `/api/settings/asset/intro` : '',
+    outroUrl: s.outro ? `/api/settings/asset/outro` : '',
   });
 });
 
@@ -79,6 +81,43 @@ router.post(
 function coverUrlOf(s) {
   return s.cover ? publicUrl(`assets/${s.cover}`) : '';
 }
+
+// Intro/Outro/Cover über die eigene App ausliefern.
+// Nötig, weil der Browser Dateien von fremden Adressen (dem R2-Speicher) nur mit
+// CORS-Freigabe abrufen darf – die R2 standardmäßig nicht mitschickt.
+const ASSET_MIME = {
+  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+};
+
+router.get('/asset/:kind', async (req, res) => {
+  const kind = req.params.kind;
+  if (!['intro', 'outro', 'cover'].includes(kind)) {
+    return res.status(400).json({ error: 'Unbekannte Art' });
+  }
+  const name = getSettings()[kind];
+  if (!name) return res.status(404).json({ error: `${kind} ist nicht hinterlegt` });
+
+  // Einmal geholte Dateien im Arbeitsordner behalten, damit nicht bei jedem
+  // Aufruf erneut aus dem Speicher geladen wird.
+  const lokal = path.join(paths.tmp, `asset-${kind}-${name}`);
+  try {
+    let datei = lokal;
+    if (!fs.existsSync(lokal)) {
+      // Ohne R2 liegt die Datei schon auf der Platte; downloadToFile gibt dann
+      // deren Pfad zurück, statt sie zu kopieren. Diesen Pfad verwenden.
+      const geholt = await downloadToFile(`assets/${name}`, lokal);
+      if (!geholt || !fs.existsSync(geholt)) {
+        return res.status(404).json({ error: 'Datei nicht im Speicher gefunden' });
+      }
+      datei = geholt;
+    }
+    res.type(ASSET_MIME[path.extname(name).toLowerCase()] || 'application/octet-stream');
+    res.sendFile(path.resolve(datei));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ---- Ausgangsbilder für den Cover-Generator ----
 // Mehrere erlaubt: je mehr Ansichten der Personen, desto besser bleiben die

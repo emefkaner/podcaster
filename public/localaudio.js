@@ -118,12 +118,20 @@ export async function lokalZusammenbauen(teile, rahmen, onStatus) {
   const ffmpeg = await ffmpegHolen(onStatus);
   const dateien = [];
 
-  // Intro und Outro holen, sofern hinterlegt.
+  // Intro und Outro holen, sofern hinterlegt. Fehler werden gemeldet statt
+  // stillschweigend übergangen – sonst bliebe unklar, warum sie fehlen.
   const laden = async (url, name) => {
     if (!url) return null;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    await ffmpeg.writeFile(name, new Uint8Array(await res.arrayBuffer()));
+    let res;
+    try {
+      res = await fetch(url, { credentials: 'same-origin' });
+    } catch (e) {
+      throw new Error(`${name} konnte nicht geladen werden: ${e.message}`);
+    }
+    if (!res.ok) throw new Error(`${name} konnte nicht geladen werden (HTTP ${res.status}).`);
+    const daten = new Uint8Array(await res.arrayBuffer());
+    if (!daten.length) throw new Error(`${name} kam leer zurück.`);
+    await ffmpeg.writeFile(name, daten);
     return name;
   };
 
