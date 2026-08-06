@@ -877,8 +877,7 @@ async function renderEpisode(id) {
   $('#sttBtn')?.addEventListener('click', async () => {
     const btn = $('#sttBtn'), info = $('#sttInfo');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Hört zu …';
-    info.innerHTML = '<p class="field-hint">Die Aufnahme wird abgehört. Bei langen Folgen dauert das einige Minuten — '
-                   + 'du kannst die Seite ruhig verlassen.</p>';
+    info.innerHTML = '';
     try {
       await api(`/api/episodes/${encodeURIComponent(id)}/transcribe`, { method: 'POST' });
       warteAufTranskript(id);
@@ -948,19 +947,65 @@ async function renderEpisode(id) {
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
 }
 
-// Fragt regelmäßig nach, ob das Transkript fertig ist. Der Vorgang läuft auf
+// Fragt regelmäßig nach, wie weit das Transkript ist. Der Vorgang läuft auf
 // dem Server – die Seite darf zwischendurch geschlossen werden.
+//
+// Ein ehrlicher Balken geht nur, wenn schon einmal gemessen wurde: Google
+// meldet keinen Fortschritt. Beim ersten Mal läuft er deshalb unbestimmt und
+// zeigt stattdessen Schritt und verstrichene Zeit; ab dem zweiten Mal dient
+// die gebrauchte Zeit des letzten Laufs als Maßstab.
 function warteAufTranskript(id) {
   stopProc();
-  procTimer = setTimeout(async () => {
+  const box = $('#sttInfo');
+  if (box && !$('#sttFill')) {
+    box.innerHTML = `
+      <div class="progress" style="margin:10px 0 6px;"><div class="progress-fill indeterminate" id="sttFill"></div></div>
+      <p class="field-hint" id="sttPhase">Wird vorbereitet …</p>
+      <p class="field-hint" id="sttZeit"></p>`;
+  }
+
+  const tick = async () => {
     let ep;
-    try { ep = await api(`/api/episodes/${encodeURIComponent(id)}`); } catch { return; }
-    if (ep.textLaeuft) return warteAufTranskript(id);
-    toast(ep.transcript
-      ? 'Transkript fertig — Vorschlag steht bereit.'
-      : `Kein Transkript: ${ep.transcriptError || 'unbekannter Grund'}`, 6000);
-    renderEpisode(id);
-  }, 4000);
+    try { ep = await api(`/api/episodes/${encodeURIComponent(id)}`); } catch { procTimer = setTimeout(tick, 4000); return; }
+
+    if (!ep.textLaeuft) {
+      toast(ep.transcript
+        ? 'Transkript fertig — Vorschlag steht bereit.'
+        : `Kein Transkript: ${ep.transcriptError || 'unbekannter Grund'}`, 6000);
+      renderEpisode(id);
+      return;
+    }
+
+    const f = ep.textFortschritt || {};
+    const seit = f.start ? Math.round((Date.now() - new Date(f.start).getTime()) / 1000) : 0;
+    const schaetzung = ep.sttSekunden || 0;
+
+    const balken = $('#sttFill');
+    if (balken) {
+      if (schaetzung > 0) {
+        // Nie über 97 % – fertig ist erst fertig.
+        balken.classList.remove('indeterminate');
+        balken.style.width = `${Math.min(97, Math.round((seit / schaetzung) * 100))}%`;
+      } else {
+        balken.classList.add('indeterminate');
+      }
+    }
+    if ($('#sttPhase')) {
+      $('#sttPhase').textContent = f.gesamt > 1 && f.teil
+        ? `Teil ${f.teil} von ${f.gesamt}: ${f.phase || '…'}`
+        : (f.phase || 'Läuft …');
+    }
+    if ($('#sttZeit')) {
+      $('#sttZeit').textContent = schaetzung
+        ? `${fmtClock(seit)} von etwa ${fmtClock(schaetzung)} (Erfahrungswert vom letzten Mal). Du kannst die Seite verlassen.`
+        : `Läuft seit ${fmtClock(seit)}. Wie lange es dauert, weiß die App erst nach dem ersten Durchlauf — `
+          + `dann zeigt sie hier eine echte Schätzung. Du kannst die Seite verlassen.`;
+    }
+
+    procTimer = setTimeout(tick, 3000);
+  };
+
+  procTimer = setTimeout(tick, 1200);
 }
 
 // Beschreibt in einem Satz, mit welchen Werten die aktuell hörbare Fassung

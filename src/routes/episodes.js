@@ -393,12 +393,14 @@ router.post('/:id/transcribe', (req, res) => {
 
   ep.textLaeuft = true;
   ep.transcriptError = '';
+  ep.textFortschritt = { phase: 'Aufnahmen werden geholt', teil: 0, gesamt: (ep.parts || []).length,
+                         start: new Date().toISOString() };
   saveEpisode(ep);
 
   transkriptNachholen(ep.id).catch((err) => {
     console.error('Transkript nachholen fehlgeschlagen:', err);
     const cur = getEpisode(ep.id);
-    if (cur) saveEpisode({ ...cur, textLaeuft: false, transcriptError: err.message });
+    if (cur) saveEpisode({ ...cur, textLaeuft: false, textFortschritt: null, transcriptError: err.message });
   });
 
   res.status(202).json(getEpisode(ep.id));
@@ -406,19 +408,32 @@ router.post('/:id/transcribe', (req, res) => {
 
 async function transkriptNachholen(id) {
   const tmpFiles = [];
+  const begonnen = Date.now();
+
+  // Zwischenstand festhalten, damit die App zeigen kann, wo es gerade steht.
+  const melde = ({ phase, teil = 0, gesamt = 0 }) => {
+    const cur = getEpisode(id);
+    if (!cur) return;
+    cur.textFortschritt = { phase, teil, gesamt, start: new Date(begonnen).toISOString() };
+    saveEpisode(cur);
+  };
+
   try {
     const ep = getEpisode(id);
+    const gesamt = (ep.parts || []).length;
     const partPaths = [];
     for (const part of ep.parts || []) {
+      melde({ phase: 'Aufnahmen werden geholt', teil: partPaths.length + 1, gesamt });
       const local = path.join(paths.tmp, `stt-${id}-${part.id}${path.extname(part.key)}`);
       const got = await downloadToFile(part.key, local);
       if (got) { partPaths.push(got); tmpFiles.push(got); }
     }
     if (!partPaths.length) throw new Error('Aufnahmen nicht abrufbar.');
 
-    const { text, fehler } = await transcribeAll(partPaths);
+    const { text, fehler } = await transcribeAll(partPaths, melde);
 
     // Aus dem frischen Transkript gleich einen neuen Textvorschlag ziehen.
+    melde({ phase: 'Infotext wird geschrieben', teil: gesamt, gesamt });
     let vorschlag = '', textFehler = '';
     try {
       vorschlag = await generateDescription({ transcript: text, title: getEpisode(id).title });
@@ -432,7 +447,11 @@ async function transkriptNachholen(id) {
     cur.descriptionError = textFehler;
     // Den bestehenden Text nicht überschreiben – als Vorschlag danebenlegen.
     if (vorschlag) cur.descriptionSuggestion = vorschlag;
+    // Gebrauchte Zeit merken: Beim nächsten Mal kann die App daraus eine
+    // belastbare Schätzung anzeigen statt einer geratenen.
+    if (text) cur.sttSekunden = Math.round((Date.now() - begonnen) / 1000);
     cur.textLaeuft = false;
+    cur.textFortschritt = null;
     saveEpisode(cur);
   } finally {
     for (const f of tmpFiles) nurArbeitsdateiLoeschen(f);
