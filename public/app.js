@@ -630,8 +630,23 @@ async function renderEpisode(id) {
       <div class="btn-row" style="margin-top:12px;">
         <button class="btn primary" id="saveBtn">💾 Änderungen speichern</button>
         <button class="btn ghost" id="regenBtn" title="Text von der KI neu schreiben lassen">↻ Text</button>
+        ${(ep.parts || []).length
+          ? `<button class="btn ghost" id="sttBtn" title="Aufnahme neu abhören und mitschreiben lassen">🎧 Transkript nachholen</button>`
+          : ''}
       </div>
       <p class="field-hint" id="saveHint">Alles gespeichert.</p>
+      <div id="sttInfo"></div>
+
+      ${ep.descriptionSuggestion?.trim() && ep.descriptionSuggestion.trim() !== (ep.description || '').trim()
+        ? `<div style="margin-top:14px;padding:12px;border:1px solid var(--border);border-left:3px solid var(--pink);border-radius:0 10px 10px 0;background:var(--surface);">
+             <b style="font-size:.92rem;">Es liegt ein neuerer KI-Vorschlag bereit</b>
+             <p style="white-space:pre-wrap;margin:8px 0;font-size:.9rem;">${escapeHtml(ep.descriptionSuggestion)}</p>
+             <div class="btn-row">
+               <button class="btn small" id="useSuggest">In den Infotext übernehmen</button>
+               <button class="btn ghost small" id="dropSuggest">Verwerfen</button>
+             </div>
+           </div>`
+        : ''}
       ${!ep.transcript?.trim() ? `
         <p class="field-hint">Kein Transkript vorhanden — „↻ Text" recherchiert dann den Film
           anhand des Titels und schreibt daraus. Optional kannst du Stichworte mitgeben:</p>
@@ -841,6 +856,45 @@ async function renderEpisode(id) {
     neuenTextHolen(($('#descHints')?.value || '').trim(), $('#regenBtn'));
   });
 
+  // Bereitliegenden Vorschlag übernehmen oder wegräumen.
+  $('#useSuggest')?.addEventListener('click', () => {
+    $('#epDesc').value = ep.descriptionSuggestion;
+    markiereGeaendert();
+    $('#epDesc').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('#epDesc').classList.add('blitz');
+    setTimeout(() => $('#epDesc').classList.remove('blitz'), 1200);
+    toast('Übernommen — noch speichern.', 3500);
+  });
+  $('#dropSuggest')?.addEventListener('click', async () => {
+    await api(`/api/episodes/${encodeURIComponent(id)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ descriptionSuggestion: '' }),
+    });
+    renderEpisode(id);
+  });
+
+  // Transkript nachholen: läuft auf dem Server weiter, deshalb nachfragen.
+  $('#sttBtn')?.addEventListener('click', async () => {
+    const btn = $('#sttBtn'), info = $('#sttInfo');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Hört zu …';
+    info.innerHTML = '<p class="field-hint">Die Aufnahme wird abgehört. Bei langen Folgen dauert das einige Minuten — '
+                   + 'du kannst die Seite ruhig verlassen.</p>';
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}/transcribe`, { method: 'POST' });
+      warteAufTranskript(id);
+    } catch (e) {
+      info.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+      btn.disabled = false; btn.textContent = '🎧 Transkript nachholen';
+    }
+  });
+
+  // Läuft beim Öffnen schon eins? Dann direkt weiterverfolgen.
+  if (ep.textLaeuft) {
+    const btn = $('#sttBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Hört zu …'; }
+    warteAufTranskript(id);
+  }
+
   // Vor jedem Veröffentlichen die aktuellen Texte sichern.
   const texteSichern = () => api(`/api/episodes/${encodeURIComponent(id)}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -892,6 +946,21 @@ async function renderEpisode(id) {
   });
 
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
+}
+
+// Fragt regelmäßig nach, ob das Transkript fertig ist. Der Vorgang läuft auf
+// dem Server – die Seite darf zwischendurch geschlossen werden.
+function warteAufTranskript(id) {
+  stopProc();
+  procTimer = setTimeout(async () => {
+    let ep;
+    try { ep = await api(`/api/episodes/${encodeURIComponent(id)}`); } catch { return; }
+    if (ep.textLaeuft) return warteAufTranskript(id);
+    toast(ep.transcript
+      ? 'Transkript fertig — Vorschlag steht bereit.'
+      : `Kein Transkript: ${ep.transcriptError || 'unbekannter Grund'}`, 6000);
+    renderEpisode(id);
+  }, 4000);
 }
 
 // Beschreibt in einem Satz, mit welchen Werten die aktuell hörbare Fassung

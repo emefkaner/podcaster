@@ -379,6 +379,66 @@ router.post('/:id/image', imageUpload.single('image'), async (req, res) => {
   }
 });
 
+// Transkript nachholen. Nötig, wenn die Transkription beim Zusammenbauen
+// scheiterte: Die Folge ist dann fertig, aber ohne Gesprächsgrundlage — und
+// „Folge neu zusammenbauen" gibt es nur, solange Änderungen offen sind.
+// Läuft im Hintergrund weiter, der Status der Folge bleibt unangetastet.
+router.post('/:id/transcribe', (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (!(ep.parts || []).length) {
+    return res.status(400).json({ error: 'Keine Originalaufnahmen vorhanden — Transkript nicht möglich.' });
+  }
+  if (ep.textLaeuft) return res.status(409).json({ error: 'Läuft bereits' });
+
+  ep.textLaeuft = true;
+  ep.transcriptError = '';
+  saveEpisode(ep);
+
+  transkriptNachholen(ep.id).catch((err) => {
+    console.error('Transkript nachholen fehlgeschlagen:', err);
+    const cur = getEpisode(ep.id);
+    if (cur) saveEpisode({ ...cur, textLaeuft: false, transcriptError: err.message });
+  });
+
+  res.status(202).json(getEpisode(ep.id));
+});
+
+async function transkriptNachholen(id) {
+  const tmpFiles = [];
+  try {
+    const ep = getEpisode(id);
+    const partPaths = [];
+    for (const part of ep.parts || []) {
+      const local = path.join(paths.tmp, `stt-${id}-${part.id}${path.extname(part.key)}`);
+      const got = await downloadToFile(part.key, local);
+      if (got) { partPaths.push(got); tmpFiles.push(got); }
+    }
+    if (!partPaths.length) throw new Error('Aufnahmen nicht abrufbar.');
+
+    const { text, fehler } = await transcribeAll(partPaths);
+
+    // Aus dem frischen Transkript gleich einen neuen Textvorschlag ziehen.
+    let vorschlag = '', textFehler = '';
+    try {
+      vorschlag = await generateDescription({ transcript: text, title: getEpisode(id).title });
+    } catch (err) {
+      textFehler = err.message;
+    }
+
+    const cur = getEpisode(id);
+    cur.transcript = text;
+    cur.transcriptError = text ? '' : (fehler.join(' · ') || 'Es kam kein Text zurück.');
+    cur.descriptionError = textFehler;
+    // Den bestehenden Text nicht überschreiben – als Vorschlag danebenlegen.
+    if (vorschlag) cur.descriptionSuggestion = vorschlag;
+    cur.textLaeuft = false;
+    saveEpisode(cur);
+  } finally {
+    for (const f of tmpFiles) nurArbeitsdateiLoeschen(f);
+  }
+}
+
 // Infotext neu vorschlagen lassen. Nutzt das Transkript, falls vorhanden;
 // sonst den Titel und optional ein paar Stichworte.
 router.post('/:id/describe', async (req, res) => {
@@ -447,6 +507,8 @@ router.put('/:id', (req, res) => {
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
   if (typeof req.body.title === 'string') ep.title = req.body.title.trim();
   if (typeof req.body.description === 'string') ep.description = req.body.description;
+  // Bereitliegenden Vorschlag übernehmen oder wegräumen.
+  if (typeof req.body.descriptionSuggestion === 'string') ep.descriptionSuggestion = req.body.descriptionSuggestion;
   // Klangbearbeitung anpassen – wirkt beim nächsten Zusammenbauen.
   if (req.body.enhance && typeof req.body.enhance === 'object') {
     ep.enhance = {
