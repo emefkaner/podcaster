@@ -13,16 +13,18 @@ als 2048er PNG mit 9 MB vor, was für Referenzbilder unnötig ist.
 
 ## Wer aufs Cover gehört
 
-**Die Stammbesetzung — drei Personen.** So stehen sie in `03` und `04`,
-von links nach rechts:
+**Die Stammbesetzung — drei Personen** (vom Nutzer selbst zugeordnet):
 
-1. **Hellblond/hellbraun, breites Lächeln, glatt rasiert** — immer links, immer gut gelaunt.
-2. **Braunes Haar, Vollbart, meist mit Kapuze** — Mitte, ernster Blick.
-3. **Dunkles Haar, schwarze Brille, Kinnbart** — rechts, skeptisch bis grimmig.
+| Wer | Woran erkennbar | Auf `01` | Auf `03` / `04` |
+|---|---|---|---|
+| **Matthias** | hellblond, breites Zahn-Lächeln, glatt rasiert | 1. von links | links |
+| **Maurice** | kräftiger, dunkelblond, Bärtchen | 3. von links | Mitte |
+| **emefka** | dunkles Haar, schwarze Brille, Kinnbart, skeptischer Blick | 4. von links | rechts |
 
-**Andreas — nur manchmal.** Er ist die vierte Person auf `01`. Ist er in einer
-Folge dabei, sagt der Nutzer das ausdrücklich; dann gehören **vier** Figuren
-aufs Cover, sonst drei. Als Vorlage für sein Gesicht dient `01`.
+**Andreas — nur manchmal.** Die verbleibende Figur auf `01`: **2. von links**,
+schmaler, rotbraunes Haar, leichter Bart. Er ist der Einzige, der auf `03` und
+`04` fehlt. Ist er in einer Folge dabei, sagt der Nutzer das ausdrücklich; dann
+gehören **vier** Figuren aufs Cover, sonst drei. Vorlage für sein Gesicht: `01`.
 
 **Gastpodcaster — kommen öfter vor.** Der Nutzer kündigt sie an. Für einen Gast
 gibt es **keine Vorlage** — ohne Bild erfindet das Modell ein Gesicht. Deshalb:
