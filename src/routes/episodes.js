@@ -302,9 +302,11 @@ router.post('/:id/describe', async (req, res) => {
   const hinweise = (req.body?.hinweise || '').trim();
   const grundlage = [ep.transcript, hinweise].filter(Boolean).join('\n\n');
 
-  if (!grundlage) {
+  // Ohne Transkript und ohne Stichworte wird der Film anhand des Titels
+  // recherchiert – dafür braucht es lediglich einen Titel.
+  if (!grundlage && !ep.title?.trim()) {
     return res.status(400).json({
-      error: 'Für diese Folge gibt es kein Transkript. Bitte ein paar Stichworte zum Inhalt angeben.',
+      error: 'Ohne Titel lässt sich nichts recherchieren. Bitte zuerst einen Titel eintragen.',
     });
   }
 

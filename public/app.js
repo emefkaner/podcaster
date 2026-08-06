@@ -616,12 +616,9 @@ async function renderEpisode(id) {
         <button class="btn ghost small" id="regenBtn" title="Neuen KI-Vorschlag">↻ Text</button>
       </div>
       ${!ep.transcript?.trim() ? `
-        <div id="hintBox" class="hidden" style="margin-top:10px;">
-          <label>Worum ging es in der Folge?</label>
-          <input type="text" id="descHints" placeholder="z. B. Dune Teil 2, Sandwürmer, Hans Zimmer, langer Spoilerteil" />
-          <p class="field-hint">Für diese Folge gibt es kein Transkript — aus deinen Stichworten wird der Text geschrieben.</p>
-          <button class="btn small" id="hintGo" style="margin-top:6px;">Text schreiben lassen</button>
-        </div>` : ''}
+        <p class="field-hint">Kein Transkript vorhanden — „↻ Text" recherchiert dann den Film
+          anhand des Titels und schreibt daraus. Optional kannst du Stichworte mitgeben:</p>
+        <input type="text" id="descHints" placeholder="optional: z. B. langer Spoilerteil, Matthew war begeistert" />` : ''}
 
       <label style="margin-top:20px;">Aufnahme-Teile (Reihenfolge = Abspielreihenfolge)</label>
       <div id="partList">${renderParts(ep)}</div>
@@ -795,17 +792,9 @@ async function renderEpisode(id) {
     }
   }
 
+  // Ohne Transkript wird recherchiert; etwaige Stichworte fließen mit ein.
   $('#regenBtn').addEventListener('click', () => {
-    if (ep.transcript?.trim()) return neuenTextHolen('', $('#regenBtn'));
-    const box = $('#hintBox');
-    box.classList.remove('hidden');
-    $('#descHints').focus();
-  });
-
-  $('#hintGo')?.addEventListener('click', () => {
-    const hinweise = $('#descHints').value.trim();
-    if (!hinweise) return toast('Bitte ein paar Stichworte eingeben.');
-    neuenTextHolen(hinweise, $('#hintGo'));
+    neuenTextHolen(($('#descHints')?.value || '').trim(), $('#regenBtn'));
   });
 
   // Vor jedem Veröffentlichen die aktuellen Texte sichern.
