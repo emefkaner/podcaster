@@ -17,6 +17,24 @@ Deshalb gilt:
 4. **Unsicherheit benennen.** Wenn etwas nicht überprüft werden konnte, das
    klar sagen — nicht als Tatsache verkaufen.
 
+## Anleitungen für den Nutzer — kurz und klickbar
+
+Keine vagen Verweise. „Schau auf GitHub unter Actions, ob er grün wird" ist
+unbrauchbar. Stattdessen:
+
+1. **Vollständige Adresse hinschreiben**, zum Kopieren:
+   `https://github.com/emefkaner/podcaster/actions`
+2. **Nummerierte Schritte**, ein Schritt = eine Handlung.
+3. **Beschriftungen wörtlich nennen**, so wie sie auf dem Bildschirm stehen
+   („Klick auf **Save changes**"), nicht umschreiben.
+4. **Sagen, woran man Erfolg erkennt** — grüner Haken, welche Meldung, welche
+   Zahl.
+5. **Sagen, was bei Misserfolg zu tun ist** — meist: abfotografieren und
+   herschicken.
+
+Kein Fließtext für Handlungsanweisungen. Erklärungen gehören davor oder
+danach, nicht zwischen die Schritte.
+
 ## Umgebung
 
 - Der Sicherheits-Proxy lässt nur wenige Ziele zu. Die laufende App unter
