@@ -127,9 +127,10 @@ Folgen-Cover erzeugt. Regeln dafür:
    „Bild von einer Adresse übernehmen" ein.
 5. Passt es nicht: Änderungswunsch abwarten und **ein** neues erzeugen.
 
-Die Referenzbilder (die bisherigen Cover) müssen als Datei vorliegen; über
-`media_upload` hochladen und als Referenz mitgeben, damit Figuren und
-Zeichenstil erhalten bleiben.
+Die Referenzbilder liegen im Repo unter **`cover-vorlagen/`** — vier Stück,
+1024×1024. Über `media_upload` hochladen und als Referenz mitgeben, damit
+Figuren und Zeichenstil erhalten bleiben. Wer wer ist, steht in
+`cover-vorlagen/README.md`.
 
 Hintergrund: Googles Bildmodelle lehnen diese Aufträge mit
 `PROHIBITED_CONTENT` ab, weil erkennbare Personen in den Vorlagen sind.
