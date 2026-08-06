@@ -188,6 +188,16 @@ let mediaRecorder, chunks = [], recordedBlob = null, timerInt, seconds = 0;
 let localAudio = null; // wird bei Bedarf nachgeladen (ffmpeg als WebAssembly)
 let letzterLokalFehler = ''; // zur Fehlersuche, falls die lokale Bearbeitung scheitert
 
+// Läuft gerade eine Aufbereitung oder ein Upload? Dann darf die Seite weder
+// automatisch neu laden noch unbemerkt geschlossen werden – die Arbeit im
+// Browser wäre sonst verloren.
+let arbeitetGerade = false;
+window.addEventListener('beforeunload', (e) => {
+  if (!arbeitetGerade) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 function setupRecorder() {
   const recBtn = $('#recBtn'), timer = $('#timer'), hint = $('#recHint');
 
@@ -290,6 +300,7 @@ async function submitEpisode() {
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Arbeitet …';
+  arbeitetGerade = true; // schützt vor Neuladen und versehentlichem Schließen
 
   // Fortschrittsbalken unter dem Knopf einblenden.
   if (!$('#uploadBar')) {
@@ -374,9 +385,11 @@ async function submitEpisode() {
         ? `Wird hochgeladen: ${pct} % · ${fmtMB(geladen)} von ${fmtMB(gesamt)} MB`
         : 'Hochgeladen — Verarbeitung startet …');
     });
+    arbeitetGerade = false;
     toast('Hochgeladen – Verarbeitung läuft.');
     go(`/episode/${encodeURIComponent(ep.id)}`);
   } catch (err) {
+    arbeitetGerade = false;
     if (err.message !== '__abgebrochen__') toast('Fehler: ' + err.message, 4500);
     $('#uploadBar')?.remove();
     btn.disabled = false;
@@ -1301,13 +1314,30 @@ function escapeAttr(str = '') {
 // Service Worker (PWA-Grundgerüst). Übernimmt ein neuer die Kontrolle, lädt die
 // Seite einmal neu – sonst liefe die alte Oberfläche gegen einen neuen Server.
 if ('serviceWorker' in navigator) {
+  // Beim allerersten Besuch übernimmt erstmalig ein Service Worker – das ist
+  // keine neue Version und soll nicht gemeldet werden.
+  const hatteSchonEinen = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register('/sw.js').catch(() => {});
-  let reloaded = false;
+
+  // Früher wurde hier automatisch neu geladen. Das hat laufende Arbeit im
+  // Browser zerstört – eine Aufbereitung mitten im Vorgang war danach weg.
+  // Deshalb: nur Bescheid geben, das Neuladen entscheidet der Nutzer.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded) return;
-    reloaded = true;
-    window.location.reload();
+    if (!hatteSchonEinen) return;   // erste Einrichtung, nichts zu melden
+    if (arbeitetGerade) return;     // während laufender Arbeit gar nicht stören
+    zeigeNeuladenHinweis();
   });
+}
+
+function zeigeNeuladenHinweis() {
+  if (document.getElementById('swHinweis')) return;
+  const box = document.createElement('div');
+  box.id = 'swHinweis';
+  box.className = 'toast';
+  box.style.cursor = 'pointer';
+  box.innerHTML = 'Neue Version verfügbar — <b>zum Neuladen tippen</b>';
+  box.addEventListener('click', () => window.location.reload());
+  document.body.appendChild(box);
 }
 
 render();
