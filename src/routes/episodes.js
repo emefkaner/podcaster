@@ -6,7 +6,7 @@ import path from 'node:path';
 import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
 import { listEpisodes, getEpisode, saveEpisode, deleteEpisode, getSettings } from '../store.js';
-import { buildEpisode, probeDuration } from '../audio.js';
+import { buildEpisode, buildEpisodeCopy, probeDuration } from '../audio.js';
 import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
@@ -579,23 +579,31 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
 
-    // Wurde die Folge im Browser schon fertig zusammengebaut, wird sie direkt
-    // übernommen – der Server startet dann gar kein ffmpeg.
+    const filterNoetig = !ep.lokalBearbeitet && (ep.enhance?.enabled || ep.trimSilence?.enabled);
+
     let duration, size;
     if (fertigDatei) {
+      // Im Browser schon fertig zusammengebaut – der Server fasst nichts an.
       melde('Fertige Folge wird übernommen …');
       fs.renameSync(fertigDatei.path, outPath);
       duration = await probeDuration(outPath).catch(() => 0);
       size = fs.statSync(outPath).size;
+    } else if (!filterNoetig) {
+      // Kein Filter nötig: nur zusammenkleben, ohne die Aufnahme neu zu kodieren.
+      // Das geht auch bei zweistündigen Folgen in Sekunden.
+      melde('Folge wird zusammengefügt …');
+      ({ duration, size } = await buildEpisodeCopy({
+        intro: introPath, mains: partPaths, outro: outroPath, outFile: outPath,
+      }));
     } else {
-      melde('Audio wird zusammengebaut …', 0);
+      // Nur wenn ausdrücklich Optimierung gewünscht ist: der aufwendige Weg mit
+      // Neukodierung. Für lange Folgen auf kleinen Servern nicht zu empfehlen.
+      melde('Audio wird optimiert und zusammengebaut …', 0);
       ({ duration, size } = await buildEpisode({
         intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
-        // Wurde bereits auf dem Gerät bearbeitet, hier nicht noch einmal filtern –
-        // das würde nur Rechenzeit kosten und den Klang unnötig zweimal anfassen.
-        enhance: ep.lokalBearbeitet ? null : ep.enhance,
-        trimSilence: ep.lokalBearbeitet ? null : ep.trimSilence,
-        onProgress: ({ prozent }) => melde('Audio wird zusammengebaut …', prozent),
+        enhance: ep.enhance,
+        trimSilence: ep.trimSilence,
+        onProgress: ({ prozent }) => melde('Audio wird optimiert und zusammengebaut …', prozent),
       }));
     }
 

@@ -25,6 +25,95 @@ export function probeDuration(file) {
   });
 }
 
+// Liest Codec, Abtastrate und Kanäle einer Audiodatei aus.
+function probe(file) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(file, (err, meta) => {
+      if (err) return reject(err);
+      const a = (meta.streams || []).find((s) => s.codec_type === 'audio') || {};
+      resolve({
+        codec: a.codec_name || '',
+        sampleRate: Number(a.sample_rate) || 0,
+        channels: Number(a.channels) || 0,
+        duration: Number(meta.format?.duration) || 0,
+      });
+    });
+  });
+}
+
+// Wandelt eine Datei in eine MP3 mit vorgegebener Abtastrate/Kanalzahl um.
+function transcodeMp3(input, outFile, sampleRate, channels) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(input)
+      .audioCodec('libmp3lame')
+      .audioBitrate(BITRATE)
+      .audioFrequency(sampleRate)
+      .audioChannels(channels)
+      .format('mp3')
+      .on('error', reject)
+      .on('end', () => resolve(outFile))
+      .save(outFile);
+  });
+}
+
+// Schnelles Zusammenfügen OHNE Neukodierung der (langen) Hauptaufnahme.
+//
+// Der Trick: Die Hauptaufnahme wird gar nicht angefasst. Nur Intro und Outro –
+// jeweils wenige Sekunden – werden an ihr Format angepasst. Danach werden alle
+// Teile per Stream-Copy aneinandergehängt. Dadurch dauert das Zusammenfügen auch
+// bei einer zweistündigen Folge nur Sekunden, unabhängig von der Server-CPU.
+//
+// Voraussetzung fürs Kopieren: gleiche Codec-Familie. Die Hauptaufnahme sollte
+// als MP3 vorliegen (z. B. MP3-Export aus Riverside). Ist sie es nicht, wird sie
+// als einziger Ausweg doch umgewandelt – dann greift wieder die CPU-Grenze.
+export async function buildEpisodeCopy({ intro, mains, outro, outFile }) {
+  const mainList = (Array.isArray(mains) ? mains : [mains]).filter((f) => f && fs.existsSync(f));
+  if (!mainList.length) throw new Error('Keine Aufnahme vorhanden.');
+
+  // Referenzformat von der ersten Hauptaufnahme übernehmen.
+  const ref = await probe(mainList[0]);
+  const rate = ref.sampleRate || SAMPLE_RATE;
+  const ch = ref.channels || CHANNELS;
+
+  const reihenfolge = [intro, ...mainList, outro].filter((f) => f && fs.existsSync(f));
+  const tmpFiles = [];
+  const vorbereitet = [];
+
+  for (const seg of reihenfolge) {
+    const p = await probe(seg).catch(() => ({}));
+    const passt = p.codec === 'mp3' && p.sampleRate === rate && p.channels === ch;
+    if (passt) {
+      vorbereitet.push(seg); // unverändert übernehmen (kein Neukodieren!)
+    } else {
+      const t = path.join(paths.tmp, `norm-${path.basename(seg)}-${Date.now()}.mp3`);
+      await transcodeMp3(seg, t, rate, ch);
+      vorbereitet.push(t);
+      tmpFiles.push(t);
+    }
+  }
+
+  // Concat-Liste schreiben und per Stream-Copy zusammenfügen.
+  const listFile = path.join(paths.tmp, `list-${Date.now()}.txt`);
+  fs.writeFileSync(listFile, vorbereitet.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+  tmpFiles.push(listFile);
+
+  try {
+    await new Promise((resolve, reject) => {
+      ffmpeg(listFile)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy'])
+        .on('error', reject)
+        .on('end', resolve)
+        .save(outFile);
+    });
+    const duration = await probeDuration(outFile);
+    const size = fs.statSync(outFile).size;
+    return { duration, size };
+  } finally {
+    for (const f of tmpFiles) fs.rmSync(f, { force: true });
+  }
+}
+
 // Baut die Filter-Kette für die KI-/DSP-Sprachoptimierung der Hauptaufnahme.
 // strength: 0..100 (Regler in der App). "Dezent" bei niedrigen Werten,
 // aggressiver bei hohen. Läuft komplett lokal über ffmpeg – kostet nichts.
