@@ -60,10 +60,15 @@ function fmtDur(sec) {
 const STATUS_LABEL = { processing: 'Wird verarbeitet', draft: 'Entwurf', published: 'Veröffentlicht', error: 'Fehler' };
 
 // ---------- Routing (sehr simpel) ----------
+// Timer der Verarbeitungs-Anzeige, damit beim Seitenwechsel nichts weiterläuft.
+let procTimer = null;
+function stopProc() { if (procTimer) { clearTimeout(procTimer); procTimer = null; } }
+
 function go(path) { history.pushState({}, '', path); render(); }
 window.addEventListener('popstate', render);
 
 function render() {
+  stopProc(); // laufende Fortschritts-Abfrage einer anderen Seite beenden
   const p = location.pathname;
   if (p === '/settings') return renderSettings();
   const m = p.match(/^\/episode\/(.+)$/);
@@ -181,6 +186,7 @@ async function renderHome() {
 // ---- Recorder (MediaRecorder API) ----
 let mediaRecorder, chunks = [], recordedBlob = null, timerInt, seconds = 0;
 let localAudio = null; // wird bei Bedarf nachgeladen (ffmpeg als WebAssembly)
+let letzterLokalFehler = ''; // zur Fehlersuche, falls die lokale Bearbeitung scheitert
 
 function setupRecorder() {
   const recBtn = $('#recBtn'), timer = $('#timer'), hint = $('#recHint');
@@ -337,8 +343,12 @@ async function submitEpisode() {
         lokalGeschafft = true;
       } catch (e) {
         // Nicht abbrechen – der Server kann es auch, nur langsamer.
-        console.warn('Lokale Bearbeitung nicht möglich:', e);
-        toast('Bearbeitung auf dem Gerät klappte nicht — der Server übernimmt.', 4000);
+        // Den echten Grund festhalten, damit sich das Problem beheben lässt.
+        console.error('Lokale Bearbeitung fehlgeschlagen:', e);
+        letzterLokalFehler = (e && e.message) ? e.message : String(e);
+        info.innerHTML = `<span class="error">Verarbeitung auf dem Gerät klappte nicht:</span> `
+          + `${escapeHtml(letzterLokalFehler)}<br>Der Server übernimmt (kann länger dauern).`;
+        await new Promise((r) => setTimeout(r, 100));
       }
     }
 
@@ -455,8 +465,6 @@ async function renderEpisode(id) {
 
   // Solange in Verarbeitung: Statusanzeige + Polling.
   if (ep.status === 'processing') {
-    const f = ep.fortschritt || {};
-    const hatProzent = typeof f.prozent === 'number' && f.prozent > 0;
     const schritte = [
       'Aufnahmen werden geladen',
       'Audio wird zusammengebaut',
@@ -464,24 +472,19 @@ async function renderEpisode(id) {
       'Aufnahme wird transkribiert',
       'Infotext wird geschrieben',
     ];
-    const aktuell = schritte.findIndex((s) => (f.phase || '').startsWith(s));
 
+    // Grundgerüst EINMAL bauen; danach nur noch einzelne Werte aktualisieren –
+    // dadurch kein Neuaufbau der Seite und kein Flackern.
     view.innerHTML = `
       <button class="back" onclick="history.back()">← Zurück</button>
       <div class="card">
         <h3 style="margin-top:0;">${escapeHtml(ep.title)}</h3>
         <div class="progress" style="margin:14px 0 8px;">
-          <div class="progress-fill${hatProzent ? '' : ' indeterminate'}"
-               style="${hatProzent ? `width:${f.prozent}%` : ''}"></div>
+          <div class="progress-fill" id="procFill"></div>
         </div>
-        <p style="margin:0;font-weight:600;">
-          ${escapeHtml(f.phase || 'Wird vorbereitet …')}${hatProzent ? ` <span class="muted">${f.prozent} %</span>` : ''}
-        </p>
-        <ol class="steps">
-          ${schritte.map((s, i) => `
-            <li class="${i < aktuell ? 'fertig' : i === aktuell ? 'aktiv' : ''}">
-              ${i < aktuell ? '✓' : i === aktuell ? '<span class="spinner"></span>' : '○'} ${s}
-            </li>`).join('')}
+        <p style="margin:0;font-weight:600;" id="procPhase"></p>
+        <ol class="steps" id="procSteps">
+          ${schritte.map((s, i) => `<li id="procStep${i}"><span class="mark">○</span> ${s}</li>`).join('')}
         </ol>
         <p class="field-hint">Läuft im Hintergrund weiter — du kannst die Seite verlassen.</p>
         <div class="btn-row" style="margin-top:14px;">
@@ -493,11 +496,46 @@ async function renderEpisode(id) {
     $('#delProc').addEventListener('click', () => deleteEpisode(id));
     $('#stuckBtn').addEventListener('click', async () => {
       if (!confirm('Verarbeitung als abgebrochen markieren?\n\nDanach kannst du sie neu starten oder die Folge löschen.')) return;
+      stopProc();
       await api(`/api/episodes/${encodeURIComponent(id)}/abbrechen`, { method: 'POST' });
       renderEpisode(id);
     });
 
-    setTimeout(() => { if (location.pathname.includes(id)) renderEpisode(id); }, 2500);
+    const zeichneStand = (e) => {
+      const f = e.fortschritt || {};
+      const hatProzent = typeof f.prozent === 'number' && f.prozent > 0;
+      const fill = $('#procFill');
+      if (fill) {
+        fill.classList.toggle('indeterminate', !hatProzent);
+        fill.style.width = hatProzent ? `${f.prozent}%` : '';
+      }
+      const phase = $('#procPhase');
+      if (phase) phase.innerHTML = `${escapeHtml(f.phase || 'Wird vorbereitet …')}`
+        + (hatProzent ? ` <span class="muted">${f.prozent} %</span>` : '');
+      const aktuell = schritte.findIndex((s) => (f.phase || '').startsWith(s));
+      schritte.forEach((_, i) => {
+        const li = $(`#procStep${i}`);
+        if (!li) return;
+        const fertig = i < aktuell, aktiv = i === aktuell;
+        li.className = fertig ? 'fertig' : aktiv ? 'aktiv' : '';
+        const mark = li.querySelector('.mark');
+        if (mark) mark.innerHTML = fertig ? '✓' : aktiv ? '<span class="spinner"></span>' : '○';
+      });
+    };
+
+    zeichneStand(ep);
+
+    // Sanftes Nachfragen ohne Neuaufbau. Erst bei fertiger/fehlerhafter Folge
+    // einmal komplett neu zeichnen.
+    const poll = async () => {
+      let fresh;
+      try { fresh = await api(`/api/episodes/${encodeURIComponent(id)}`); }
+      catch { procTimer = setTimeout(poll, 4000); return; }
+      if (fresh.status !== 'processing') { stopProc(); return renderEpisode(id); }
+      zeichneStand(fresh);
+      procTimer = setTimeout(poll, 4000);
+    };
+    procTimer = setTimeout(poll, 4000);
     return;
   }
 
