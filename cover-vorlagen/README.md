@@ -34,6 +34,23 @@ Referenz mitgeben. Nie einfach eine Figur dazuerfinden.
 Zeichenstil: kräftig konturierte Comic-Illustration, leicht karikierte Gesichter
 auf realistisch gerendertem Hintergrund, satte Farben, starkes Gegenlicht.
 
+## Gesichter einzeln ausschneiden
+
+```
+node cover-vorlagen/gesichter-ausschneiden.mjs [quelle] [zielordner]
+```
+
+Im ganzen Cover ist jedes Gesicht nur rund 150 Pixel groß — als Referenz fürs
+Bildmodell zu wenig, die Figuren kommen dann ungenau zurück. Das Skript schneidet
+Kopf und Schultern einzeln heraus.
+
+Gegen die 1024er-Dateien hier im Ordner ergibt das ~350 Pixel je Gesicht, gegen
+die **2048er-Originale aus dem R2-Speicher** (`base-images/`) ~700. Wenn möglich
+die Originale nehmen.
+
+Die Ausschnitte landen standardmäßig in `gesichter/` und sind per `.gitignore`
+ausgeschlossen — sie sind Arbeitsmaterial, kein Repo-Inhalt.
+
 ## Verwendung
 
 Diese Bilder werden im Chat als Referenz an das Bildmodell gegeben, damit

@@ -5,3 +5,7 @@ SETUP-WERTE.md
 data/
 *.log
 .DS_Store
+
+# Ausgeschnittene Gesichter aus den Cover-Vorlagen. Nur Arbeitsmaterial fuer
+# die Bilderzeugung - gehoert nicht ins oeffentliche Repo.
+gesichter/
