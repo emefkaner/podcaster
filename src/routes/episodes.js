@@ -12,7 +12,6 @@ import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
-import { generateCandidates } from '../artwork.js';
 import { generatePeaks, cutRegions } from '../waveform.js';
 
 const router = express.Router();
@@ -29,6 +28,19 @@ const upload = multer({
   }),
   limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB – reicht für lange Folgen
 });
+
+// Standard-Rauschunterdrückung. 20 % hat sich als guter Ausgangswert erwiesen:
+// hörbar sauberer, ohne dass die Stimmen dumpf werden.
+const STANDARD_STAERKE = 20;
+const STANDARD_PAUSE = 2;
+
+// Zahl aus einer Formular-/JSON-Angabe lesen. Anders als `Number(x) || standard`
+// bleibt hier eine echte 0 erhalten.
+function zahl(wert, standard, min, max) {
+  const n = Number(wert);
+  if (!Number.isFinite(n)) return standard;
+  return Math.min(max, Math.max(min, n));
+}
 
 // Fortlaufende Nummer für veröffentlichte Folgen – älteste ist Nummer 1.
 // Dient nur der eigenen Übersicht und taucht bewusst nicht im RSS-Feed auf.
@@ -83,12 +95,12 @@ router.post('/', uploadFelder, async (req, res) => {
     needsRebuild: false,  // true, sobald sich die Teile nach dem Bau ändern
     enhance: {
       enabled: req.body.enhance === 'true' || req.body.enhance === '1',
-      strength: Math.min(100, Math.max(0, Number(req.body.strength) || 50)),
+      strength: zahl(req.body.strength, STANDARD_STAERKE, 0, 100),
     },
     // Lange Sprechpausen automatisch kürzen.
     trimSilence: {
       enabled: req.body.trimSilence === 'true' || req.body.trimSilence === '1',
-      seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSeconds) || 2)),
+      seconds: zahl(req.body.trimSeconds, STANDARD_PAUSE, 0.5, 10),
     },
     // Wurde schon auf dem Gerät des Nutzers bearbeitet? Dann hier nicht nochmal.
     lokalBearbeitet: req.body.lokalBearbeitet === 'true' || req.body.lokalBearbeitet === '1',
@@ -183,18 +195,20 @@ router.post('/:id/fertig', fertigUpload.single('fertig'), async (req, res) => {
     cur.size = fs.statSync(req.file.path).size;
     cur.needsRebuild = false;
     // Eingestellte Werte mitschreiben, damit die Regler den Stand zeigen.
-    if (req.body?.strength) {
+    if (req.body?.strength !== undefined) {
       cur.enhance = {
         enabled: req.body.enhance !== 'false',
-        strength: Math.min(100, Math.max(0, Number(req.body.strength) || 50)),
+        strength: zahl(req.body.strength, STANDARD_STAERKE, 0, 100),
       };
     }
-    if (req.body?.trimSeconds) {
+    if (req.body?.trimSeconds !== undefined) {
       cur.trimSilence = {
         enabled: req.body.trimSilence !== 'false',
-        seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSeconds) || 2)),
+        seconds: zahl(req.body.trimSeconds, STANDARD_PAUSE, 0.5, 10),
       };
     }
+    // Wann zuletzt neu berechnet wurde – die App zeigt es unter „Klang nachjustieren".
+    cur.klangStand = new Date().toISOString();
     saveEpisode(cur);
     res.json(cur);
   } catch (e) {
@@ -372,18 +386,17 @@ router.post('/:id/describe', async (req, res) => {
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
 
   const hinweise = (req.body?.hinweise || '').trim();
-  const grundlage = [ep.transcript, hinweise].filter(Boolean).join('\n\n');
 
   // Ohne Transkript und ohne Stichworte wird der Film anhand des Titels
   // recherchiert – dafür braucht es lediglich einen Titel.
-  if (!grundlage && !ep.title?.trim()) {
+  if (!ep.transcript?.trim() && !hinweise && !ep.title?.trim()) {
     return res.status(400).json({
       error: 'Ohne Titel lässt sich nichts recherchieren. Bitte zuerst einen Titel eintragen.',
     });
   }
 
   try {
-    const text = await generateDescription({ transcript: grundlage, title: ep.title });
+    const text = await generateDescription({ transcript: ep.transcript, title: ep.title, hinweise });
     const cur = getEpisode(ep.id);
     cur.descriptionSuggestion = text;
     saveEpisode(cur);
@@ -391,86 +404,6 @@ router.post('/:id/describe', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
-
-// Cover-Vorschläge erzeugen: Ausgangsbild(er) passend zum Folgenthema abwandeln.
-router.post('/:id/artwork', async (req, res) => {
-  const ep = getEpisode(req.params.id);
-  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
-
-  const settings = getSettings();
-  const wish = (req.body?.prompt || '').trim();
-  const count = Math.min(4, Math.max(1, Number(req.body?.count) || 3));
-  // Titelzeile aufs Cover: was eingegeben wurde, sonst der zuletzt verwendete,
-  // sonst der Standardtitel der Reihe aus den Einstellungen.
-  const headline = (req.body?.headline ?? ep.artworkHeadline ?? settings.coverHeadline ?? '').trim();
-  const subtitle = (req.body?.subtitle ?? ep.artworkSubtitle ?? '').trim();
-
-  // Ausgangsbilder in den Arbeitsordner holen.
-  const localBases = [];
-  for (const name of settings.baseImages || []) {
-    const local = await downloadToFile(`base-images/${name}`, path.join(paths.tmp, `base-${name}`));
-    if (local) localBases.push(local);
-  }
-
-  try {
-    const images = await generateCandidates({
-      basePaths: localBases,
-      wish,
-      style: settings.imageStyle,
-      title: ep.title,
-      headline,
-      subtitle,
-      count,
-    });
-
-    // Vorschläge ablegen, damit sie im Browser angezeigt werden können.
-    const candidates = [];
-    for (let i = 0; i < images.length; i++) {
-      const ext = images[i].mimeType === 'image/jpeg' ? '.jpg' : '.png';
-      const key = `artwork-candidates/${ep.id}-${Date.now()}-${i}${ext}`;
-      const tmpFile = path.join(paths.tmp, path.basename(key));
-      fs.writeFileSync(tmpFile, images[i].data);
-      const url = await uploadFile(tmpFile, key, images[i].mimeType);
-      fs.rmSync(tmpFile, { force: true });
-      candidates.push({ key, url });
-    }
-
-    const cur = getEpisode(ep.id);
-    // Vorherige, nicht gewählte Vorschläge aufräumen.
-    for (const old of cur.artworkCandidates || []) {
-      if (old.key !== cur.imageKey) await deleteKey(old.key);
-    }
-    cur.artworkCandidates = candidates;
-    cur.artworkPrompt = wish;
-    cur.artworkHeadline = headline;
-    cur.artworkSubtitle = subtitle;
-    saveEpisode(cur);
-
-    res.json({ candidates });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  } finally {
-    for (const f of localBases) fs.rmSync(f, { force: true });
-  }
-});
-
-// Einen Vorschlag als Folgen-Cover übernehmen (die anderen werden gelöscht).
-router.post('/:id/artwork/select', async (req, res) => {
-  const ep = getEpisode(req.params.id);
-  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
-  const chosen = (ep.artworkCandidates || []).find((c) => c.key === req.body?.key);
-  if (!chosen) return res.status(400).json({ error: 'Vorschlag nicht gefunden' });
-
-  if (ep.imageKey && ep.imageKey !== chosen.key) await deleteKey(ep.imageKey);
-  for (const c of ep.artworkCandidates) {
-    if (c.key !== chosen.key) await deleteKey(c.key);
-  }
-  ep.imageKey = chosen.key;
-  ep.imageUrl = chosen.url;
-  ep.artworkCandidates = [];
-  saveEpisode(ep);
-  res.json(ep);
 });
 
 // Folgen-Cover von einer Adresse übernehmen. Praktisch, wenn das Bild anderswo
@@ -518,14 +451,14 @@ router.put('/:id', (req, res) => {
   if (req.body.enhance && typeof req.body.enhance === 'object') {
     ep.enhance = {
       enabled: Boolean(req.body.enhance.enabled),
-      strength: Math.min(100, Math.max(0, Number(req.body.enhance.strength) || 60)),
+      strength: zahl(req.body.enhance.strength, STANDARD_STAERKE, 0, 100),
     };
     ep.needsRebuild = true;
   }
   if (req.body.trimSilence && typeof req.body.trimSilence === 'object') {
     ep.trimSilence = {
       enabled: Boolean(req.body.trimSilence.enabled),
-      seconds: Math.min(10, Math.max(0.5, Number(req.body.trimSilence.seconds) || 2)),
+      seconds: zahl(req.body.trimSilence.seconds, STANDARD_PAUSE, 0.5, 10),
     };
     ep.needsRebuild = true;
   }
@@ -610,6 +543,8 @@ router.delete('/:id', async (req, res) => {
   if (ep.audioKey) await deleteKey(ep.audioKey);
   if (ep.imageKey) await deleteKey(ep.imageKey);
   for (const part of ep.parts || []) await deleteKey(part.key);
+  // Altlast: Folgen aus der Zeit des Cover-Generators können noch Vorschläge
+  // im Speicher haben. Die werden hier mit entfernt.
   for (const c of ep.artworkCandidates || []) await deleteKey(c.key);
   deleteEpisode(ep.id);
   res.json({ ok: true });
@@ -757,12 +692,23 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
         console.error('Transkription fehlgeschlagen:', err.message);
       }
       melde('Infotext wird geschrieben …');
-      const description = await generateDescription({ transcript, title: getEpisode(id).title });
+      // Scheitert der Text, bleibt die fertige Folge trotzdem erhalten – der
+      // Grund wird notiert und in der App angezeigt.
+      let description = '', textFehler = '';
+      try {
+        description = await generateDescription({ transcript, title: getEpisode(id).title });
+      } catch (err) {
+        console.error('Infotext fehlgeschlagen:', err.message);
+        textFehler = err.message;
+      }
       ep = getEpisode(id);
       ep.transcript = transcript;
-      // Einen bereits überarbeiteten Text nicht überschreiben.
-      if (!ep.description?.trim()) ep.description = description;
-      else ep.descriptionSuggestion = description;
+      ep.descriptionError = textFehler;
+      if (description) {
+        // Einen bereits überarbeiteten Text nicht überschreiben.
+        if (!ep.description?.trim()) ep.description = description;
+        else ep.descriptionSuggestion = description;
+      }
       saveEpisode(ep);
     }
 

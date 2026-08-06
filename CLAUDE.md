@@ -22,8 +22,23 @@ Deshalb gilt:
 - Der Sicherheits-Proxy lässt nur wenige Ziele zu (Anthropic, npm, PyPI).
   Die laufende App unter `cinespasten.emefka.com` ist von hier **nicht**
   erreichbar. Prüfungen deshalb lokal ausführen.
-- Nach Änderungen: auf beide Branches pushen, da Render von `master` baut.
-  `git push origin main && git push origin main:master`
+- Für lokale Prüfungen: `APP_PASSWORD=… DATA_DIR=… PORT=… node src/server.js`,
+  dann mit Playwright gegen `localhost` testen. Chromium liegt unter
+  `/opt/pw-browsers/chromium` (`executablePath` mitgeben). `ffmpeg`/`ffprobe`
+  gibt es in dieser Umgebung **nicht** — Audio-Wege lassen sich hier also nicht
+  durchspielen, nur die Oberfläche.
+
+### Wohin gepusht wird
+
+Zwei Repos mit identischem Inhalt:
+
+- **`emefkaner/podcaster`** — davon baut Render. Hier liegt der Ernstfall.
+  `git push origin main && git push origin main:master` (Render baut `master`).
+- **`emefkaner/basic`** — Arbeits-Repo dieser Sitzung, Branch
+  `claude/podcast-website-auto-publish-ltemxp`.
+
+Jede Änderung gehört in **beide**. Ist `podcaster` nicht angebunden, per
+`add_repo` holen; der Klon liegt dann unter `/workspace/podcaster`.
 
 ## Cover erzeugen — Ablauf auf Zuruf
 
@@ -49,6 +64,9 @@ Hintergrund: Googles Bildmodelle lehnen diese Aufträge mit
 Higgsfields Entwickler-API antwortet mit 403 (eigenes Produkt, nicht im
 Ultra-Abo enthalten). Der Weg über diesen Chat ist deshalb der einzige, der
 mit den vorhandenen Credits funktioniert.
+
+Der eingebaute Cover-Generator wurde deshalb aus der App entfernt. In der
+Folge gibt es nur noch „Bild von einer Adresse übernehmen" und den Upload.
 
 ## Sprache
 

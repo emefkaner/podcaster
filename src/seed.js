@@ -43,27 +43,5 @@ export async function seedAssets() {
     }
   }
 
-  // Ausgangsbilder für den Cover-Generator: alles aus seed/base-images/.
-  if (!(settings.baseImages || []).length) {
-    const dir = path.join(seedDir, 'base-images');
-    if (fs.existsSync(dir)) {
-      const names = [];
-      for (const filename of fs.readdirSync(dir).sort()) {
-        const ext = path.extname(filename).toLowerCase();
-        if (!MIME[ext]?.startsWith('image/')) continue;
-        try {
-          await uploadFile(path.join(dir, filename), `base-images/${filename}`, MIME[ext]);
-          names.push(filename);
-        } catch (err) {
-          console.error(`Ausgangsbild ${filename} konnte nicht übernommen werden:`, err.message);
-        }
-      }
-      if (names.length) {
-        patch.baseImages = names;
-        console.log(`Ausgangsbilder übernommen: ${names.join(', ')}`);
-      }
-    }
-  }
-
   if (Object.keys(patch).length) saveSettings(patch);
 }

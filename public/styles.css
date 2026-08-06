@@ -117,7 +117,24 @@ header.topbar h1 {
   color: transparent;
 }
 header.topbar .logo { font-size: 1.9rem; }
-.topbar-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+/* Marke ist zugleich der Weg zurück zur Startseite. */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background .15s;
+}
+.topbar-left:hover { background: var(--surface); }
+.topbar-left:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
 .brand { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .brand .tagline {
   font-size: .68rem;
@@ -269,6 +286,14 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 3px var(--purple-soft);
 }
 textarea { min-height: 130px; resize: vertical; line-height: 1.55; }
+
+/* Kurz aufleuchten, wenn ein Feld von außen neu befüllt wurde – etwa nach
+   „↻ Text". Sonst bleibt unklar, ob überhaupt etwas passiert ist. */
+.blitz { animation: blitz 1.2s ease-out; }
+@keyframes blitz {
+  0%   { border-color: var(--pink); box-shadow: 0 0 0 4px rgba(255,45,143,.35); }
+  100% { border-color: var(--border); box-shadow: 0 0 0 0 rgba(255,45,143,0); }
+}
 input[type="file"] { color: var(--muted); font-size: .9rem; }
 input[type="file"]::file-selector-button {
   background: var(--surface-2);

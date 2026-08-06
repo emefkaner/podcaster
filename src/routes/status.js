@@ -21,14 +21,10 @@ router.get('/', (req, res) => {
       gemini: Boolean(config.geminiKey),
       anchor: Boolean(config.anchor.email && config.anchor.password),
     },
-    bildanbieter: config.higgsfield.apiKey && config.higgsfield.apiSecret
-      ? `Higgsfield (${config.higgsfield.modell || 'soul'}, ${config.higgsfield.aufloesung})`
-      : (config.geminiKey ? `Gemini (${config.geminiImageModel})` : 'nicht eingerichtet'),
     dateien: {
       intro: s.intro || null,
       outro: s.outro || null,
       cover: s.cover || null,
-      ausgangsbilder: (s.baseImages || []).length,
     },
     podcast: {
       titel: s.title,

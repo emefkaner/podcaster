@@ -32,23 +32,9 @@ export const config = {
   ).replace(/\/$/, ''),
   // Gemini: Standard für Transkription + Infotext (kostenloser Kontingentbereich).
   geminiKey: process.env.GEMINI_API_KEY || '',
-  // Bildmodell für den Cover-Generator. Achtung: Bilder sind NICHT im kostenlosen
-  // Kontingent enthalten. "gemini-3.1-flash-image" ist die günstige Variante,
-  // "gemini-3-pro-image" liefert bessere Gesichts-Konsistenz, kostet aber mehr.
-  geminiImageModel: process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
   // Optionale Alternativen.
   openaiKey: process.env.OPENAI_API_KEY || '',
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',
-  // Higgsfield – bevorzugte Quelle für Cover, sofern eingerichtet.
-  // Beide gängigen Schreibweisen zulassen – die Doku nennt mal die eine, mal die andere.
-  higgsfield: {
-    apiKey: process.env.HIGGSFIELD_API_KEY || process.env.HIGGSFIELD_KEY || '',
-    apiSecret: process.env.HIGGSFIELD_API_SECRET || process.env.HIGGSFIELD_SECRET || '',
-    // Modell und Endpunkt umstellbar, ohne den Code zu ändern.
-    modell: process.env.HIGGSFIELD_MODEL || 'nano_banana_2',
-    endpunkt: process.env.HIGGSFIELD_ENDPOINT || '',
-    aufloesung: process.env.HIGGSFIELD_RESOLUTION || '1k',
-  },
   // Spotify for Podcasters (Anchor) – für den direkten Push per Browser-Automation.
   anchor: {
     email: process.env.ANCHOR_EMAIL || '',
@@ -80,11 +66,6 @@ export const defaultSettings = {
   cover: '',
   // Quell-Feed für den Import (dein bisheriger Anchor-Feed).
   sourceFeedUrl: process.env.SOURCE_FEED_URL || '',
-  // Cover-Generator: Ausgangsbilder, Stilvorgabe und der Schriftzug, der auf
-  // jedem Cover oben stehen bleibt.
-  baseImages: [],
-  imageStyle: '',
-  coverHeadline: 'DIE CINESPASTEN',
   // Wer im Podcast spricht und wie – fließt in jeden Infotext ein.
   crew: '',
 };

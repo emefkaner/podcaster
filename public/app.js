@@ -81,6 +81,14 @@ function render() {
   return renderHome();
 }
 
+// Marke oben führt zurück zur Startseite. Läuft gerade eine Aufbereitung im
+// Browser, wird vorher gefragt – sonst wäre die Arbeit weg.
+$('#homeBtn')?.addEventListener('click', () => {
+  if (location.pathname === '/') return;
+  if (arbeitetGerade && !confirm('Die Aufbereitung läuft noch. Trotzdem zurück zur Startseite?')) return;
+  go('/');
+});
+
 // ---------- Menü ----------
 const menu = $('#menu'), menuBtn = $('#menuBtn');
 
@@ -143,9 +151,10 @@ async function renderHome() {
         KI-Sprachoptimierung (gegen Hintergrundgeräusche)
       </label>
       <div id="strengthWrap">
-        <label for="strength">Stärke: <span id="strengthVal">50</span>%</label>
-        <input type="range" id="strength" min="0" max="100" value="50" style="width:100%;" />
-        <p class="field-hint">Dezent (links) bis stark (rechts). Für Auto/Restaurant eher 60–85%.</p>
+        <label for="strength">Stärke: <span id="strengthVal">20</span>%</label>
+        <input type="range" id="strength" min="0" max="100" value="20" style="width:100%;" />
+        <p class="field-hint">Dezent (links) bis stark (rechts). 20 % ist der Standard und klingt natürlich;
+          bei Auto oder Restaurant kannst du höher gehen. Wird es dumpf oder blechern, war es zu stark.</p>
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
@@ -488,12 +497,9 @@ function folgeZeile(e) {
 async function renderEpisode(id) {
   // Marke bleibt oben stehen, die Seite ergibt sich aus dem Inhalt.
   view.innerHTML = '<p class="muted">Lade …</p>';
-  let ep, settings = {};
+  let ep;
   try {
-    [ep, settings] = await Promise.all([
-      api(`/api/episodes/${encodeURIComponent(id)}`),
-      api('/api/settings').catch(() => ({})),
-    ]);
+    ep = await api(`/api/episodes/${encodeURIComponent(id)}`);
   } catch (err) { view.innerHTML = `<p class="error">${err.message}</p>`; return; }
 
   // Solange in Verarbeitung: Statusanzeige + Polling.
@@ -612,6 +618,10 @@ async function renderEpisode(id) {
       <label for="epDesc">Infotext (KI-Vorschlag – frei änderbar)</label>
       <textarea id="epDesc">${escapeHtml(ep.description || '')}</textarea>
       <p class="field-hint">Das ist der Text, der später im Podcast erscheint. Prüfe/ändere ihn und speichere.</p>
+      ${ep.descriptionError
+        ? `<p class="error" style="margin-top:6px;">Beim Zusammenbauen kam kein Infotext zustande:
+             ${escapeHtml(ep.descriptionError)}<br>Mit „↻ Text" kannst du es erneut versuchen.</p>`
+        : ''}
 
       <div class="btn-row" style="margin-top:12px;">
         <button class="btn primary" id="saveBtn">💾 Änderungen speichern</button>
@@ -627,12 +637,16 @@ async function renderEpisode(id) {
         <b style="font-size:.95rem;">🎚️ Klang nachjustieren</b>
         <p class="field-hint" style="margin-top:4px;">Wird immer aus den <b>Originalaufnahmen</b> neu berechnet — du kannst also beliebig oft probieren, ohne Qualität zu verlieren.</p>
 
+        <p class="field-hint" style="margin:8px 0 12px;padding:8px 10px;border-left:3px solid var(--purple);background:var(--surface);border-radius:0 8px 8px 0;">
+          <b>Aktuelle Fassung:</b> ${klangStandText(ep)}
+        </p>
+
         <label style="display:flex;align-items:center;gap:10px;">
           <input type="checkbox" id="reEnh" ${ep.enhance?.enabled ? 'checked' : ''} style="width:auto;" />
           Rauschunterdrückung
         </label>
-        <label for="reStrength">Stärke: <span id="reStrengthVal">${ep.enhance?.strength ?? 50}</span>%</label>
-        <input type="range" id="reStrength" min="0" max="100" value="${ep.enhance?.strength ?? 50}" style="width:100%;" />
+        <label for="reStrength">Stärke: <span id="reStrengthVal">${ep.enhance?.strength ?? 20}</span>%</label>
+        <input type="range" id="reStrength" min="0" max="100" value="${ep.enhance?.strength ?? 20}" style="width:100%;" />
         <p class="field-hint">Klingt es dumpf oder blechern, war es zu stark — dann runter auf 20–30 %.</p>
 
         <label style="display:flex;align-items:center;gap:10px;margin-top:10px;">
@@ -659,24 +673,6 @@ async function renderEpisode(id) {
 
       <label style="margin-top:18px;">Folgen-Bild ${ep.imageUrl ? '' : '<span class="muted">(ohne: Podcast-Cover wird verwendet)</span>'}</label>
       ${ep.imageUrl ? `<img src="${escapeAttr(ep.imageUrl)}" alt="Folgen-Bild" style="width:120px;height:120px;object-fit:cover;border-radius:12px;display:block;margin-bottom:10px;" />` : ''}
-
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;">
-        <b style="font-size:.95rem;">🎨 Cover generieren</b>
-        <p class="field-hint" style="margin-top:4px;">Eure Gesichter bleiben immer gleich. Titel, Kleidung, Kulisse und Stimmung passen sich dem Film an.</p>
-
-        <label style="margin-top:10px;">Titel oben aufs Cover</label>
-        <input type="text" id="artHeadline" value="${escapeAttr(ep.artworkHeadline || settings.coverHeadline || '')}" placeholder="z. B. CINESPASTEN CRIME 101" />
-
-        <label>Unterzeile unten <span class="muted">(optional)</span></label>
-        <input type="text" id="artSubtitle" value="${escapeAttr(ep.artworkSubtitle || '')}" placeholder="z. B. EASY ON THE SPACE SUITS" />
-
-        <label>Kleidung, Kulisse &amp; Stimmung</label>
-        <textarea id="artPrompt" style="min-height:70px;" placeholder="Spartaner-Rüstungen mit Helmen, antikes Meer, Zyklop im Hintergrund, warmes Abendlicht">${escapeHtml(ep.artworkPrompt || '')}</textarea>
-
-        <button class="btn" id="artBtn" style="margin-top:10px;">3 Vorschläge generieren</button>
-        <p class="field-hint">Kostet ein paar Cent pro Durchgang.</p>
-        <div id="artResult"></div>
-      </div>
 
       <label>Bild von einer Adresse übernehmen</label>
       <input type="text" id="epImageUrl" placeholder="https://… (Adresse des fertigen Covers einfügen)" />
@@ -768,33 +764,6 @@ async function renderEpisode(id) {
   wireParts(id, ep);
   wireNachjustieren(id, ep);
 
-  // Beim Öffnen bereits vorhandene Vorschläge anzeigen.
-  if (ep.artworkCandidates?.length) showCandidates(id, ep.artworkCandidates);
-
-  $('#artBtn').addEventListener('click', async () => {
-    const prompt = $('#artPrompt').value.trim();
-    if (!prompt) return toast('Bitte kurz beschreiben, was verändert werden soll.');
-    const btn = $('#artBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generiere … (~30 Sek.)';
-    $('#artResult').innerHTML = '';
-    try {
-      const r = await api(`/api/episodes/${encodeURIComponent(id)}/artwork`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt, count: 3,
-          headline: $('#artHeadline').value,
-          subtitle: $('#artSubtitle').value,
-        }),
-      });
-      showCandidates(id, r.candidates);
-      toast(`${r.candidates.length} Vorschläge fertig.`);
-    } catch (e) {
-      $('#artResult').innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
-    } finally {
-      btn.disabled = false; btn.textContent = '3 Vorschläge generieren';
-    }
-  });
-
   $('#epImageUrlBtn')?.addEventListener('click', async () => {
     const url = $('#epImageUrl').value.trim();
     if (!url) return toast('Bitte eine Adresse einfügen.');
@@ -833,17 +802,31 @@ async function renderEpisode(id) {
   // Text neu vorschlagen lassen. Ohne Transkript wird erst nach Stichworten gefragt.
   async function neuenTextHolen(hinweise, btn) {
     const label = btn.textContent;
+    const feld = $('#epDesc');
+    const vorher = feld.value;
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
       const r = await api(`/api/episodes/${encodeURIComponent(id)}/describe`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hinweise }),
       });
-      $('#epDesc').value = r.vorschlag;
+      const neu = (r.vorschlag || '').trim();
+      if (!neu) throw new Error('Die KI hat keinen Text geliefert.');
+
+      feld.value = neu;
       markiereGeaendert(); // Vorschlag ist noch nicht gesichert
-      toast('Neuer Vorschlag eingesetzt — prüfen und speichern.', 4000);
+
+      // Sichtbar machen, dass sich etwas getan hat: hinscrollen und kurz
+      // hervorheben. Sonst bleibt unklar, ob überhaupt etwas passiert ist.
+      feld.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feld.classList.add('blitz');
+      setTimeout(() => feld.classList.remove('blitz'), 1200);
+
+      toast(neu === vorher.trim()
+        ? 'Die KI hat denselben Text noch einmal geliefert.'
+        : 'Neuer Vorschlag eingesetzt — prüfen und speichern.', 4000);
     } catch (e) {
-      toast('Fehler: ' + e.message, 4500);
+      toast('Kein neuer Text: ' + e.message, 6000);
     } finally {
       btn.disabled = false; btn.textContent = label;
     }
@@ -905,6 +888,24 @@ async function renderEpisode(id) {
   });
 
   $('#delBtn2').addEventListener('click', () => deleteEpisode(id));
+}
+
+// Beschreibt in einem Satz, mit welchen Werten die aktuell hörbare Fassung
+// gerechnet wurde. Die Regler darunter lassen sich verstellen — dieser Satz
+// bleibt stehen und zeigt weiter den tatsächlichen Stand der Audiodatei.
+function klangStandText(ep) {
+  const teile = [];
+  if (ep.enhance?.enabled) teile.push(`${ep.enhance.strength ?? 20} % Rauschunterdrückung`);
+  else teile.push('ohne Rauschunterdrückung');
+
+  if (ep.trimSilence?.enabled) {
+    teile.push(`Pausen ab ${(ep.trimSilence.seconds ?? 2).toFixed(1).replace('.', ',')} s gekürzt`);
+  } else {
+    teile.push('Pausen unverändert');
+  }
+
+  const wann = ep.klangStand ? ` · zuletzt berechnet ${fmtDateTime(ep.klangStand)}` : '';
+  return `${teile.join(', ')}${wann}`;
 }
 
 // Klang nachjustieren: Originale holen, im Browser neu bearbeiten, Folge ersetzen.
@@ -1187,38 +1188,6 @@ function wireWave(episodeId, partId) {
   update();
 }
 
-// Zeigt die generierten Cover-Vorschläge zur Auswahl an.
-function showCandidates(id, candidates) {
-  const box = $('#artResult');
-  if (!box) return;
-  box.innerHTML = `
-    <p class="field-hint" style="margin-top:12px;">Tippe auf den Vorschlag, den du nehmen willst:</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:8px;">
-      ${candidates.map((c) => `
-        <button class="cand" data-key="${escapeAttr(c.key)}"
-                style="padding:0;border:2px solid var(--border);border-radius:12px;overflow:hidden;background:none;cursor:pointer;">
-          <img src="${escapeAttr(c.url)}" alt="Vorschlag" style="width:100%;aspect-ratio:1;object-fit:cover;display:block;" />
-        </button>`).join('')}
-    </div>`;
-
-  box.querySelectorAll('.cand').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Diesen Vorschlag als Folgen-Cover übernehmen? Die anderen werden verworfen.')) return;
-      btn.style.borderColor = 'var(--primary)';
-      try {
-        await api(`/api/episodes/${encodeURIComponent(id)}/artwork/select`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: btn.dataset.key }),
-        });
-        toast('Cover übernommen ✓');
-        renderEpisode(id);
-      } catch (e) {
-        toast('Fehler: ' + e.message);
-      }
-    });
-  });
-}
-
 async function deleteEpisode(id) {
   if (!confirm('Diese Folge unwiderruflich löschen?')) return;
   await api(`/api/episodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -1284,32 +1253,6 @@ async function renderSettings() {
     </div>
 
     <div class="card">
-      <h2 class="section" style="margin-top:0;">🎨 Cover-Generator</h2>
-      <p class="muted">Lade hier euer Ausgangsbild hoch (z. B. das Team-Foto). Bei jeder Folge wird es dann passend zum Thema abgewandelt — mehrere Bilder helfen, dass eure Gesichter erkennbar bleiben.</p>
-
-      <label>Ausgangsbilder</label>
-      <div id="baseList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
-        ${(s.baseImageUrls || []).map((b) => `
-          <div style="position:relative;">
-            <img src="${escapeAttr(b.url)}" alt="Ausgangsbild" style="width:88px;height:88px;object-fit:cover;border-radius:10px;display:block;" />
-            <button class="delBase" data-name="${escapeAttr(b.name)}" title="Entfernen"
-              style="position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:none;background:var(--danger);color:#fff;cursor:pointer;font-size:.9rem;line-height:1;">×</button>
-          </div>`).join('') || '<span class="muted">Noch keine Ausgangsbilder.</span>'}
-      </div>
-      <input type="file" id="baseFiles" accept="image/*" multiple />
-      <button class="btn ghost small" id="baseUploadBtn" style="margin-top:8px;">Ausgangsbilder hinzufügen</button>
-
-      <label style="margin-top:18px;">Standard-Titel oben auf dem Cover</label>
-      <input type="text" id="s_coverHeadline" value="${escapeAttr(s.coverHeadline || '')}" placeholder="DIE CINESPASTEN" />
-      <p class="field-hint">Wird bei jeder Folge vorgeschlagen. Pro Folge kannst du abweichen (z. B. „CINESPASTEN CRIME 101").</p>
-
-      <label style="margin-top:14px;">Grund-Look (gilt für alle Folgen)</label>
-      <textarea id="s_imageStyle" style="min-height:90px;">${escapeHtml(s.imageStyle || '')}</textarea>
-      <p class="field-hint">Der durchgehende Look eurer Reihe. Titel, Kleidung und Kulisse legst du pro Folge fest.</p>
-      <button class="btn ghost small" id="saveStyleBtn" style="margin-top:8px;">Stil speichern</button>
-    </div>
-
-    <div class="card">
       <h2 class="section" style="margin-top:0;">Bestehende Folgen importieren (Umzug)</h2>
       <p class="muted">Trag die RSS-URL deines aktuellen Podcasts ein (z. B. cinespasten). Alle Folgen werden übernommen.</p>
       <label>Aktuelle RSS-Feed-URL</label>
@@ -1352,42 +1295,6 @@ async function renderSettings() {
     await api('/api/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crew: $('#s_crew').value }),
-    });
-    toast('Gespeichert.');
-  });
-
-  $('#baseUploadBtn').addEventListener('click', async () => {
-    const files = $('#baseFiles').files;
-    if (!files.length) return toast('Bitte zuerst Bilder auswählen.');
-    const fd = new FormData();
-    for (const f of files) fd.append('images', f);
-    const btn = $('#baseUploadBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
-    try {
-      await api('/api/settings/base-images', { method: 'POST', body: fd });
-      toast('Hinzugefügt.');
-      renderSettings();
-    } catch (e) {
-      toast('Fehler: ' + e.message);
-      btn.disabled = false; btn.textContent = 'Ausgangsbilder hinzufügen';
-    }
-  });
-
-  view.querySelectorAll('.delBase').forEach((b) => {
-    b.addEventListener('click', async () => {
-      if (!confirm('Dieses Ausgangsbild entfernen?')) return;
-      await api(`/api/settings/base-images/${encodeURIComponent(b.dataset.name)}`, { method: 'DELETE' });
-      renderSettings();
-    });
-  });
-
-  $('#saveStyleBtn').addEventListener('click', async () => {
-    await api('/api/settings', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageStyle: $('#s_imageStyle').value,
-        coverHeadline: $('#s_coverHeadline').value,
-      }),
     });
     toast('Gespeichert.');
   });
@@ -1470,11 +1377,10 @@ async function loadStatus() {
     box.innerHTML = `
       <div style="display:grid;gap:6px;font-size:.9rem;">
         <div>${ok(r2)} Speicher: <b>${escapeHtml(st.speicher)}</b></div>
-        <div>${ok(st.schluessel.gemini)} Gemini-Schlüssel (Transkript, Text, Cover)</div>
+        <div>${ok(st.schluessel.gemini)} Gemini-Schlüssel (Transkript und Infotext)</div>
         <div>${ok(st.dateien.intro)} Intro: ${escapeHtml(st.dateien.intro || 'fehlt')}</div>
         <div>${ok(st.dateien.outro)} Outro: ${escapeHtml(st.dateien.outro || 'fehlt')}</div>
         <div>${ok(st.dateien.cover)} Podcast-Cover: ${escapeHtml(st.dateien.cover || 'fehlt')}</div>
-        <div>${ok(st.dateien.ausgangsbilder)} Ausgangsbilder für Cover-Generator: <b>${st.dateien.ausgangsbilder}</b></div>
         <div>${ok(st.podcast.kontaktEmail)} Kontakt-E-Mail: ${escapeHtml(st.podcast.kontaktEmail || 'fehlt (von Spotify verlangt)')}</div>
         <div style="margin-top:6px;">📻 Folgen: <b>${st.folgen.gesamt}</b>
           (${st.folgen.veroeffentlicht} veröffentlicht, ${st.folgen.entwuerfe} Entwürfe${st.folgen.fehler ? `, <span class="error">${st.folgen.fehler} Fehler</span>` : ''})</div>
@@ -1489,7 +1395,6 @@ async function loadStatus() {
           ${p.ohneText ? `<div class="error">⚠️ ${p.ohneText} Folge(n) ohne Text</div>` : '<div>✍️ Alle Folgen haben einen Text</div>'}
           <div class="muted" style="font-size:.82rem;">Belegter Speicher: ca. ${p.gesamtgroesseMB} MB von 10 000 MB</div>
         </div>` : ''}
-        <div class="muted" style="font-size:.82rem;margin-top:6px;">Cover-Generator: ${escapeHtml(st.bildanbieter)}</div>
       </div>`;
   } catch (e) {
     box.innerHTML = `<p class="error">Status nicht abrufbar: ${escapeHtml(e.message)}</p>`;
