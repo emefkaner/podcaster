@@ -618,6 +618,10 @@ async function renderEpisode(id) {
       <label for="epDesc">Infotext (KI-Vorschlag – frei änderbar)</label>
       <textarea id="epDesc">${escapeHtml(ep.description || '')}</textarea>
       <p class="field-hint">Das ist der Text, der später im Podcast erscheint. Prüfe/ändere ihn und speichere.</p>
+      ${ep.transcriptError
+        ? `<p class="error" style="margin-top:6px;">Kein Transkript entstanden:
+             ${escapeHtml(ep.transcriptError)}</p>`
+        : ''}
       ${ep.descriptionError
         ? `<p class="error" style="margin-top:6px;">Beim Zusammenbauen kam kein Infotext zustande:
              ${escapeHtml(ep.descriptionError)}<br>Mit „↻ Text" kannst du es erneut versuchen.</p>`
@@ -1378,6 +1382,8 @@ async function loadStatus() {
       <div style="display:grid;gap:6px;font-size:.9rem;">
         <div>${ok(r2)} Speicher: <b>${escapeHtml(st.speicher)}</b></div>
         <div>${ok(st.schluessel.gemini)} Gemini-Schlüssel (Transkript und Infotext)</div>
+        <div>${ok(st.schluessel.gemini && !String(st.geminiModell).startsWith('Fehler'))}
+          Gemini-Modell: <b>${escapeHtml(st.geminiModell || '–')}</b></div>
         <div>${ok(st.dateien.intro)} Intro: ${escapeHtml(st.dateien.intro || 'fehlt')}</div>
         <div>${ok(st.dateien.outro)} Outro: ${escapeHtml(st.dateien.outro || 'fehlt')}</div>
         <div>${ok(st.dateien.cover)} Podcast-Cover: ${escapeHtml(st.dateien.cover || 'fehlt')}</div>

@@ -684,12 +684,15 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
 
     // 3) Transkript und Textvorschlag – nur wenn gewünscht.
     if (withText) {
-      let transcript = '';
+      let transcript = '', transkriptFehler = [];
       try {
         melde('Aufnahme wird transkribiert … (dauert bei langen Folgen)');
-        transcript = await transcribeAll(partPaths);
+        const erg = await transcribeAll(partPaths);
+        transcript = erg.text;
+        transkriptFehler = erg.fehler;
       } catch (err) {
         console.error('Transkription fehlgeschlagen:', err.message);
+        transkriptFehler = [err.message];
       }
       melde('Infotext wird geschrieben …');
       // Scheitert der Text, bleibt die fertige Folge trotzdem erhalten – der
@@ -703,6 +706,7 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
       }
       ep = getEpisode(id);
       ep.transcript = transcript;
+      ep.transcriptError = transcript ? '' : transkriptFehler.join(' · ');
       ep.descriptionError = textFehler;
       if (description) {
         // Einen bereits überarbeiteten Text nicht überschreiben.

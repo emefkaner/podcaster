@@ -19,9 +19,13 @@ Deshalb gilt:
 
 ## Umgebung
 
-- Der Sicherheits-Proxy lässt nur wenige Ziele zu (Anthropic, npm, PyPI).
-  Die laufende App unter `cinespasten.emefka.com` ist von hier **nicht**
-  erreichbar. Prüfungen deshalb lokal ausführen.
+- Der Sicherheits-Proxy lässt nur wenige Ziele zu. Die laufende App unter
+  `cinespasten.emefka.com` ist von hier **nicht** erreichbar. Prüfungen deshalb
+  lokal ausführen.
+- **Erreichbar ist aber `generativelanguage.googleapis.com`** (geprüft: Google
+  antwortet selbst, der Proxy blockt nicht). Mit einem gültigen Schlüssel lässt
+  sich hier also nachsehen, welche Gemini-Modelle ein Konto nutzen darf —
+  `www.google.com` und die meisten anderen Ziele sind dagegen dicht.
 - Für lokale Prüfungen: `APP_PASSWORD=… DATA_DIR=… PORT=… node src/server.js`,
   dann mit Playwright gegen `localhost` testen. Chromium liegt unter
   `/opt/pw-browsers/chromium` (`executablePath` mitgeben). `ffmpeg`/`ffprobe`

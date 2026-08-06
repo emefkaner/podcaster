@@ -1,26 +1,30 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { config, paths } from './config.js';
 import { toTranscriptionAudio } from './audio.js';
+import { geminiClient, geminiGenerate } from './gemini.js';
 
 // Wandelt eine Aufnahme in Text um.
 // Bevorzugt Google Gemini (kostenloser Kontingentbereich, gut bei Deutsch und
 // Eigennamen). Fällt auf OpenAI Whisper zurück, wenn nur dieser Schlüssel gesetzt ist.
 // Ohne Schlüssel wird "" zurückgegeben – die App funktioniert dann ohne Transkript.
 // Mehrere Aufnahme-Teile nacheinander transkribieren und zusammenfügen.
+// Gibt Text UND Fehlergründe zurück: Ein leises Scheitern hat schon dazu
+// geführt, dass am Ende gar kein Infotext entstand, ohne dass jemand wusste warum.
 export async function transcribeAll(files) {
   const parts = [];
+  const fehler = [];
   for (const f of files) {
     try {
       const text = await transcribe(f);
       if (text) parts.push(text);
     } catch (err) {
       console.error('Transkription eines Teils fehlgeschlagen:', err.message);
+      fehler.push(err.message);
     }
   }
-  return parts.join('\n\n');
+  return { text: parts.join('\n\n'), fehler };
 }
 
 export async function transcribe(file) {
@@ -45,7 +49,7 @@ export async function transcribe(file) {
 }
 
 async function transcribeWithGemini(file) {
-  const ai = new GoogleGenAI({ apiKey: config.geminiKey });
+  const ai = geminiClient();
 
   // Datei hochladen (funktioniert auch für lange Folgen, anders als Inline-Daten).
   const uploaded = await ai.files.upload({ file, config: { mimeType: 'audio/mpeg' } });
@@ -69,8 +73,7 @@ async function transcribeWithGemini(file) {
   ].join(' ');
 
   try {
-    const res = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const res = await geminiGenerate({
       contents: [
         { role: 'user', parts: [
           { fileData: { fileUri: info.uri, mimeType: info.mimeType } },

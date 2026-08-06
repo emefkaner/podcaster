@@ -3,15 +3,24 @@ import { requireAuth } from '../auth.js';
 import { config } from '../config.js';
 import { getSettings, listEpisodes } from '../store.js';
 import { storageEnabled } from '../storage.js';
+import { geminiModellName } from '../gemini.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 // Kurzer Selbsttest der Einrichtung. Zeigt nur an, OB Schlüssel gesetzt sind –
 // niemals deren Werte.
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const s = getSettings();
   const eps = listEpisodes();
+
+  // Welches Gemini-Modell würde gerade verwendet? Wird bei Google erfragt und
+  // danach gemerkt – so fällt sofort auf, wenn dort keins mehr nutzbar ist.
+  let geminiModell = 'kein Schlüssel gesetzt';
+  if (config.geminiKey) {
+    try { geminiModell = await geminiModellName(); }
+    catch (e) { geminiModell = `Fehler: ${e.message}`; }
+  }
 
   res.json({
     speicher: storageEnabled() ? 'Cloudflare R2' : 'lokal (geht bei Neustart verloren)',
@@ -21,6 +30,7 @@ router.get('/', (req, res) => {
       gemini: Boolean(config.geminiKey),
       anchor: Boolean(config.anchor.email && config.anchor.password),
     },
+    geminiModell,
     dateien: {
       intro: s.intro || null,
       outro: s.outro || null,

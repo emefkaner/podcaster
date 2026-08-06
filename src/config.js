@@ -32,6 +32,10 @@ export const config = {
   ).replace(/\/$/, ''),
   // Gemini: Standard für Transkription + Infotext (kostenloser Kontingentbereich).
   geminiKey: process.env.GEMINI_API_KEY || '',
+  // Modell fest vorgeben. Leer lassen: Die App fragt bei Google nach, welche
+  // Modelle das Konto nutzen darf, und nimmt davon das beste. So geht nichts
+  // kaputt, wenn Google ein Modell abschaltet.
+  geminiModel: process.env.GEMINI_MODEL || '',
   // Optionale Alternativen.
   openaiKey: process.env.OPENAI_API_KEY || '',
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',

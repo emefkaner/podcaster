@@ -1,7 +1,7 @@
-import { GoogleGenAI } from '@google/genai';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from './config.js';
 import { getSettings } from './store.js';
+import { geminiGenerate } from './gemini.js';
 
 // Erzeugt aus dem Transkript (+ Titel) einen Vorschlag für die Folgenbeschreibung.
 // Reihenfolge: Gemini (kostenlos) -> Claude (falls Schlüssel gesetzt).
@@ -36,9 +36,7 @@ export async function generateDescription({ transcript, title, hinweise = '' }) 
 
   if (config.geminiKey) {
     try {
-      const ai = new GoogleGenAI({ apiKey: config.geminiKey });
-      const res = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const res = await geminiGenerate({
         contents: prompt,
         // Bei fehlendem Transkript im Netz nachschlagen, damit die Anspielungen
         // zum echten Film passen und nicht erfunden sind.
