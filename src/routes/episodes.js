@@ -425,13 +425,21 @@ router.put('/:id', (req, res) => {
 });
 
 // Veröffentlichen – nur nach ausdrücklicher Bestätigung im Frontend.
+// Mit „zeitpunkt" in der Zukunft wird die Folge lediglich eingeplant: Sie steht
+// dann erst ab diesem Moment im RSS-Feed.
 router.post('/:id/publish', (req, res) => {
   const ep = getEpisode(req.params.id);
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
   if (ep.status === 'processing') return res.status(409).json({ error: 'Wird noch verarbeitet' });
   if (!ep.audioUrl) return res.status(409).json({ error: 'Keine fertige Audiodatei' });
+
+  const zeitpunkt = req.body?.zeitpunkt ? new Date(req.body.zeitpunkt) : null;
+  if (req.body?.zeitpunkt && isNaN(zeitpunkt)) {
+    return res.status(400).json({ error: 'Ungültiger Zeitpunkt' });
+  }
+
   ep.status = 'published';
-  ep.publishedAt = ep.publishedAt || new Date().toISOString();
+  ep.publishedAt = (zeitpunkt || new Date()).toISOString();
   saveEpisode(ep);
   res.json(ep);
 });

@@ -52,6 +52,11 @@ function fmtDate(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('de-DE',
+    { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 function fmtDur(sec) {
   if (!sec) return '';
   const m = Math.floor(sec / 60), s = sec % 60;
@@ -463,6 +468,7 @@ function zeichneFolgen() {
 }
 
 function folgeZeile(e) {
+  const geplant = e.status === 'published' && new Date(e.publishedAt).getTime() > Date.now();
   return `
     <div class="episode" data-id="${e.id}">
       <div style="min-width:0;">
@@ -470,7 +476,7 @@ function folgeZeile(e) {
         <div class="meta">${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex:none;">
-        <span class="badge ${e.status}">${STATUS_LABEL[e.status] || e.status}</span>
+        <span class="badge ${geplant ? 'draft' : e.status}">${geplant ? 'Geplant' : (STATUS_LABEL[e.status] || e.status)}</span>
         ${e.nummer ? `<span class="epnum" title="Interne Folgennummer">#${e.nummer}</span>` : ''}
       </div>
     </div>`;
@@ -591,6 +597,8 @@ async function renderEpisode(id) {
 
   const audioUrl = ep.audioUrl || '';
   const isPublished = ep.status === 'published';
+  // Eingeplant heißt: veröffentlicht, aber der Zeitpunkt liegt noch vorn.
+  const istGeplant = isPublished && new Date(ep.publishedAt).getTime() > Date.now();
   view.innerHTML = `
     <button class="back" onclick="history.back()">← Zurück</button>
     <div class="card">
@@ -658,11 +666,21 @@ async function renderEpisode(id) {
 
     <div class="card">
       <h2 class="section" style="margin-top:0;">1) Eigener RSS-Feed</h2>
-      ${isPublished
+      ${isPublished && istGeplant
+        ? `<p><span class="badge draft">Geplant</span> Erscheint am <b>${fmtDateTime(ep.publishedAt)}</b>
+             und taucht bis dahin nicht im Feed auf.</p>
+           <button class="btn danger" id="unpubBtn" style="margin-top:10px;">Planung zurücknehmen</button>`
+        : isPublished
         ? `<p class="success">✓ Diese Folge ist im RSS-Feed und wird von Spotify abgeholt.</p>
            <button class="btn danger" id="unpubBtn">Aus Feed zurückziehen</button>`
-        : `<button class="btn primary" id="pubBtn">Veröffentlichen (in den RSS-Feed)</button>
-           <p class="field-hint">Es wird vor der Veröffentlichung nochmal nachgefragt.</p>`}
+        : `<p class="field-hint" style="margin-top:0;">Die Folge bleibt Entwurf, bis du dich hier entscheidest.
+             Speichern kannst du jederzeit oben — auch mehrfach, etwa um später ein anderes Cover einzusetzen.</p>
+           <button class="btn primary" id="pubBtn" style="margin-top:10px;">Jetzt veröffentlichen</button>
+
+           <label style="margin-top:16px;">Oder für später einplanen</label>
+           <input type="datetime-local" id="planZeit" style="width:100%;" />
+           <button class="btn" id="planBtn" style="margin-top:8px;">Zu diesem Zeitpunkt veröffentlichen</button>
+           <p class="field-hint">Die Folge erscheint dann automatisch im Feed — du musst nichts weiter tun.</p>`}
     </div>
 
     <div class="card">
@@ -767,15 +785,32 @@ async function renderEpisode(id) {
     neuenTextHolen(hinweise, $('#hintGo'));
   });
 
-  if ($('#pubBtn')) $('#pubBtn').addEventListener('click', async () => {
-    // Erst speichern, dann bestätigen, dann publishen.
-    await api(`/api/episodes/${encodeURIComponent(id)}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: $('#epTitle').value, description: $('#epDesc').value }),
-    });
+  // Vor jedem Veröffentlichen die aktuellen Texte sichern.
+  const texteSichern = () => api(`/api/episodes/${encodeURIComponent(id)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: $('#epTitle').value, description: $('#epDesc').value }),
+  });
+
+  $('#pubBtn')?.addEventListener('click', async () => {
+    await texteSichern();
     if (!confirm('Folge jetzt veröffentlichen? Sie erscheint dann im RSS-Feed und Spotify holt sie automatisch ab.')) return;
     await api(`/api/episodes/${encodeURIComponent(id)}/publish`, { method: 'POST' });
     toast('Veröffentlicht ✓');
+    renderEpisode(id);
+  });
+
+  $('#planBtn')?.addEventListener('click', async () => {
+    const wert = $('#planZeit').value;
+    if (!wert) return toast('Bitte einen Zeitpunkt wählen.');
+    const zeit = new Date(wert);
+    if (zeit.getTime() <= Date.now()) return toast('Der Zeitpunkt muss in der Zukunft liegen.');
+    await texteSichern();
+    if (!confirm(`Folge für ${zeit.toLocaleString('de-DE')} einplanen?\n\nSie erscheint erst dann im Feed.`)) return;
+    await api(`/api/episodes/${encodeURIComponent(id)}/publish`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zeitpunkt: zeit.toISOString() }),
+    });
+    toast('Eingeplant ✓');
     renderEpisode(id);
   });
 

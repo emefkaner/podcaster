@@ -18,8 +18,11 @@ function esc(str = '') {
 export function buildFeed() {
   const s = getSettings();
   const base = config.publicUrl;
+  // Nur Folgen aufnehmen, deren Zeitpunkt erreicht ist. Für später eingeplante
+  // Folgen bleibt der Feed unverändert, bis der Termin da ist.
+  const jetzt = Date.now();
   const published = listEpisodes()
-    .filter((e) => e.status === 'published')
+    .filter((e) => e.status === 'published' && new Date(e.publishedAt).getTime() <= jetzt)
     .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
   const coverUrl = s.cover ? publicUrl(`assets/${s.cover}`) : '';

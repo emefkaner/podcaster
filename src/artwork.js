@@ -75,13 +75,17 @@ export async function generateCandidates({ basePaths, wish, style, title, headli
 
   // Higgsfield zuerst, wenn eingerichtet: dort liegen meist Guthaben, und der
   // Soul-Modus hält Gesichter über mehrere Bilder hinweg zuverlässig konstant.
+  let higgsfieldFehler = '';
   if (higgsfieldVerfuegbar()) {
     try {
       return await higgsfieldVorschlaege({ basePaths: bases, prompt, count });
     } catch (err) {
-      console.error('Higgsfield fehlgeschlagen, versuche Gemini:', err.message);
-      if (!config.geminiKey) throw err;
+      higgsfieldFehler = err.message;
+      console.error('Higgsfield fehlgeschlagen:', err.message);
+      if (!config.geminiKey) throw new Error(`Higgsfield: ${err.message}`);
     }
+  } else {
+    higgsfieldFehler = 'Higgsfield ist nicht eingerichtet (HIGGSFIELD_API_KEY/SECRET fehlen).';
   }
 
   if (!config.geminiKey) throw new Error('Weder Higgsfield- noch Gemini-Zugang eingerichtet.');
@@ -112,8 +116,29 @@ export async function generateCandidates({ basePaths, wish, style, title, headli
     else errors.push('Antwort enthielt kein Bild.');
   }
 
-  if (!images.length) throw new Error(`Keine Vorschläge erzeugt. ${errors[0] || ''}`.trim());
+  if (!images.length) {
+    // Beide Wege benennen, sonst bleibt unklar, woran es tatsächlich lag.
+    const geminiGrund = kurzfassen(errors[0] || 'unbekannter Fehler');
+    throw new Error(
+      `Kein Cover erzeugt.\n\n` +
+      `• Higgsfield: ${higgsfieldFehler || 'nicht versucht'}\n` +
+      `• Gemini: ${geminiGrund}`
+    );
+  }
   return images;
+}
+
+// Lange Anbieter-Meldungen auf das Wesentliche eindampfen.
+function kurzfassen(text) {
+  const t = String(text);
+  if (/RESOURCE_EXHAUSTED|429/.test(t) && /free_tier/.test(t)) {
+    return 'Kein Freikontingent für Bildmodelle — dort ist eine Zahlungsmethode nötig.';
+  }
+  try {
+    const j = JSON.parse(t.slice(t.indexOf('{')));
+    if (j?.error?.message) return j.error.message.split('\n')[0];
+  } catch {}
+  return t.length > 200 ? `${t.slice(0, 200)}…` : t;
 }
 
 // Holt das erste Bild aus einer Modellantwort.
