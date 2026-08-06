@@ -117,6 +117,11 @@ Kurz halten. Der Nutzer will ausdrücklich **keine** langen Show Notes:
 Schreibt der Nutzer im Chat `COVER: <was anders sein soll>`, wird ein
 Folgen-Cover erzeugt. Regeln dafür:
 
+0. **Erst klären, wer drauf ist.** Standard sind die **drei** aus
+   `cover-vorlagen/03` und `04`. **Andreas** ist nur manchmal dabei — dann sind
+   es vier, seine Vorlage ist `cover-vorlagen/01`. **Gastpodcaster** kommen
+   öfter vor; für die gibt es keine Vorlage, also **vorher ein Bild der Person
+   erfragen**. Niemals eine Figur dazuerfinden.
 1. **Immer nur ein Bild auf einmal.** Kein Stapel, keine Varianten parallel.
 2. **Höchstens 1 Credit pro Bild.** Geprüft: `nano_banana_2_lite` kostet
    genau 1 Credit (1k, 1:1); `nano_banana_2` kostet 1,5 und ist damit zu teuer.
