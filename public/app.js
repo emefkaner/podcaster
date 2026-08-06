@@ -148,13 +148,15 @@ async function renderHome() {
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:16px;">
         <input type="checkbox" id="enhanceChk" checked style="width:auto;" />
-        KI-Sprachoptimierung (gegen Hintergrundgeräusche)
+        Klangbereinigung (gegen Hintergrundgeräusche)
       </label>
       <div id="strengthWrap">
         <label for="strength">Stärke: <span id="strengthVal">20</span>%</label>
         <input type="range" id="strength" min="0" max="100" value="20" style="width:100%;" />
-        <p class="field-hint">Dezent (links) bis stark (rechts). 20 % ist der Standard und klingt natürlich;
-          bei Auto oder Restaurant kannst du höher gehen. Wird es dumpf oder blechern, war es zu stark.</p>
+        <p class="field-hint">Dezent (links) bis stark (rechts). 20 % ist der Standard und klingt natürlich.
+          <b>Keine KI</b>, sondern klassische Filter: Hochpass gegen Rumpeln, spektrale Rauschunterdrückung,
+          Kompressor, Lautheitsangleich. Sie schneiden Störgeräusche weg — aufgedreht nehmen sie die Stimme mit.
+          Wird es dumpf oder blechern, war es zu stark.</p>
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
