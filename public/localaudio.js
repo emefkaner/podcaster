@@ -11,11 +11,15 @@
 // Genutzt wird ffmpeg als WebAssembly. Die etwa 31 MB werden einmalig geladen
 // und danach vom Browser zwischengespeichert.
 
-const CDN = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-const WRAPPER_DIR = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
-const WRAPPER = `${WRAPPER_DIR}/ffmpeg.js`;
-const WORKER = `${WRAPPER_DIR}/814.ffmpeg.js`; // internes Arbeitsskript der Bibliothek
-const UTIL = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js';
+// Alle ffmpeg-Bausteine liegen in der eigenen App (public/vendor/ffmpeg).
+// Aus derselben Herkunft geladen entfällt jedes Cross-Origin-Problem, an dem die
+// Aufbereitung auf dem Gerät bisher scheiterte.
+const BASE = '/vendor/ffmpeg';
+const CORE = `${BASE}/ffmpeg-core.js`;
+const WASM = `${BASE}/ffmpeg-core.wasm`;
+const WRAPPER = `${BASE}/ffmpeg.js`;
+const WORKER = `${BASE}/814.ffmpeg.js`; // internes Arbeitsskript der Bibliothek
+const UTIL = `${BASE}/util.js`;
 
 let ffmpegInstanz = null;
 let ladeVersuch = null;
@@ -61,12 +65,10 @@ async function ffmpegHolen(onStatus) {
     const { toBlobURL } = window.FFmpegUtil;
     const ffmpeg = new FFmpeg();
 
-    // Alle Bestandteile zuerst herunterladen und als lokale Adressen einbinden.
-    // Der Browser verweigert sonst das Starten des Arbeitsskripts, weil es von
-    // einer fremden Adresse stammt.
+    // Als Blob-URLs einbinden (aus eigener Herkunft geladen, also unproblematisch).
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${CDN}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${CDN}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: await toBlobURL(CORE, 'text/javascript'),
+      wasmURL: await toBlobURL(WASM, 'application/wasm'),
       classWorkerURL: await toBlobURL(WORKER, 'text/javascript'),
     });
 
