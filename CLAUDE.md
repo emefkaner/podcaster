@@ -170,6 +170,37 @@ Folgen-Cover erzeugt. Regeln dafür:
    Repo-Bilder gehen alternativ über `media_import_url` mit der Rohadresse,
    z. B. `https://raw.githubusercontent.com/emefkaner/podcaster/main/cover-vorlagen/03-hail-mary.jpg`.
 
+   **Wie Fotos vom Nutzer hereinkommen.** Bilder, die er in den Chat einfügt,
+   erreichen zwar meine Augen, aber **nicht das Dateisystem** — sie lassen sich
+   weder zuschneiden noch hochladen. Auch der Anhang-Knopf hat am 07.08. nicht
+   funktioniert. Zuverlässig ist `media_upload_widget`: Der Browser lädt direkt
+   zu Higgsfield, ich bekomme die Medien-ID. Danach lässt sich die Datei über
+   `https://d2ol7oe51mr4n9.cloudfront.net/user_<id>/<media_id>.jpg` **zurück**-
+   holen, in voller Auflösung — so entstehen die Gesichts-Ausschnitte.
+
+   **Höchstens vier Referenzbilder.** Mit fünf ordnet `flux_2` die Gesichter den
+   Positionen nicht mehr zu und vertauscht die Personen. Drei Gesichter plus
+   Motivbild ist das Maximum; die Stil-Vorlage dann weglassen und den Zeichenstil
+   über den Text beschreiben.
+
+   **Immer nur EINE Sache am Auftrag ändern.** Am 07.08. habe ich bei einer
+   Korrektur den halben Prompt umgeschrieben — Ergebnis: Gesichter verwechselt,
+   Falke weg, Rahmen zurück. Vom funktionierenden Auftrag ausgehen und nur den
+   beanstandeten Satz anfassen.
+
+7. **Fallen, die mehrfach zugeschlagen haben:**
+   - Das Wort **„Cover"** im Auftrag erzeugt einen Bilderrahmen. Auch ohne das
+     Wort taucht der Rand mal auf und mal nicht — das schwankt zwischen
+     Durchläufen. Wenn er stört: neu erzeugen oder wegschneiden.
+   - **„tool pouches"** am Gürtel liefert Scheren und Schraubenzieher. Wenn
+     Waffen gemeint sind, ausdrücklich „blaster pistols" schreiben und Werkzeug
+     verbieten.
+   - **Breites Lachen lässt Gesichter dick wirken.** Klagt der Nutzer über einen
+     „dicken Kopf", hilft ein entspannter, geschlossener Gesichtsausdruck oft
+     mehr als eine Änderung der Statur.
+   - Das Ergebnis liegt unter `d8j0ntlcm91z4.cloudfront.net` — herunterladen,
+     **selbst ansehen**, gegen den Auftrag prüfen, erst dann zeigen.
+
    **Das fertige Bild immer selbst herunterladen und ansehen** (seit der
    Netzfreigabe möglich) und gegen den Auftrag prüfen, BEVOR es dem Nutzer
    gezeigt wird. Beim ersten Mandalorian-Cover fehlte emefkas Brille und eine
