@@ -89,9 +89,6 @@ window.addEventListener('popstate', render);
 
 function render() {
   stopProc(); // laufende Fortschritts-Abfrage einer anderen Seite beenden
-  // Ein laufendes Vorhören der Adobe-Spuren gehört zur verlassenen Seite –
-  // sonst spielt es unsichtbar weiter.
-  window.stemMixer?.zuruecksetzen();
   const p = location.pathname;
   if (p === '/settings') return renderSettings();
   const m = p.match(/^\/episode\/(.+)$/);
@@ -689,39 +686,6 @@ async function renderEpisode(id) {
         <input type="text" id="descHints" placeholder="optional: z. B. langer Spoilerteil, Matthew war begeistert" />` : ''}
 
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
-        <b style="font-size:.95rem;">🎛️ Adobe-Spuren mischen</b>
-        <p class="field-hint" style="margin-top:4px;">
-          Adobe Enhance zerlegt eine Aufnahme in <b>drei Spuren</b>: Sprache, Hintergrund und Hall.
-          Lade sie hier hoch und dreh jede einzeln rein oder raus — beim Schieben hörst du das
-          Ergebnis sofort. Gerechnet wird erst, wenn du „Übernehmen" drückst.
-        </p>
-
-        <label>Sprache <span class="muted">(bereinigt)</span></label>
-        <input type="file" id="stemSprache" accept="audio/*" />
-        <label>Hintergrund <span class="muted">(optional)</span></label>
-        <input type="file" id="stemHintergrund" accept="audio/*" />
-        <label>Hall <span class="muted">(optional)</span></label>
-        <input type="file" id="stemHall" accept="audio/*" />
-
-        <div id="stemRegler" class="hidden" style="margin-top:14px;">
-          ${['sprache', 'hintergrund', 'hall'].map((s) => `
-            <label for="pegel-${s}" style="text-transform:capitalize;">${s}:
-              <span id="pegelWert-${s}">${s === 'sprache' ? 100 : s === 'hintergrund' ? 30 : 15}</span>%</label>
-            <input type="range" id="pegel-${s}" data-spur="${s}" min="0" max="200" step="5"
-                   value="${s === 'sprache' ? 100 : s === 'hintergrund' ? 30 : 15}" style="width:100%;" />`).join('')}
-
-          <div class="btn-row" style="margin-top:10px;">
-            <button class="btn" id="stemPlay">▶︎ Vorhören</button>
-            <button class="btn ghost" id="stemStop">■ Stopp</button>
-            <button class="btn primary" id="stemUebernehmen">Übernehmen</button>
-          </div>
-          <p class="field-hint">Beim Vorhören wird nichts gespeichert. „Übernehmen" rechnet die
-            Mischung und ersetzt die fertige Folge.</p>
-        </div>
-        <div id="stemInfo"></div>
-      </div>
-
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
         <b style="font-size:.95rem;">🎚️ Klang nachjustieren</b>
         <p class="field-hint" style="margin-top:4px;">Wird immer aus den <b>Originalaufnahmen</b> neu berechnet — du kannst also beliebig oft probieren, ohne Qualität zu verlieren.</p>
 
@@ -867,7 +831,6 @@ async function renderEpisode(id) {
 
   wireParts(id, ep);
   wireNachjustieren(id, ep);
-  wireSpurenMischer(id);
 
   $('#epImageUrlBtn')?.addEventListener('click', async () => {
     const url = $('#epImageUrl').value.trim();
@@ -1111,107 +1074,6 @@ function klangStandText(ep) {
 
   const wann = ep.klangStand ? ` · zuletzt berechnet ${fmtDateTime(ep.klangStand)}` : '';
   return `${teile.join(', ')}${wann}`;
-}
-
-// Adobe-Spuren mischen: drei Dateien, drei Regler, Vorhören im Browser.
-// Erst beim Übernehmen wird gerechnet — Vorhören läuft über das Web-Audio-System
-// und reagiert sofort, auch bei langen Aufnahmen.
-function wireSpurenMischer(id) {
-  const felder = { sprache: $('#stemSprache'), hintergrund: $('#stemHintergrund'), hall: $('#stemHall') };
-  if (!felder.sprache) return;
-  const reglerBox = $('#stemRegler'), info = $('#stemInfo');
-  const mixer = window.stemMixer;
-
-  const melden = (text, art = 'field-hint') => { info.innerHTML = `<p class="${art}">${escapeHtml(text)}</p>`; };
-  const pegel = () => Object.fromEntries(
-    ['sprache', 'hintergrund', 'hall'].map((s) => [s, Number($(`#pegel-${s}`).value)]));
-
-  // Datei einlesen, sobald sie gewählt wurde. Das Dekodieren dauert einen
-  // Moment, passiert aber nur einmal je Spur.
-  for (const [name, feld] of Object.entries(felder)) {
-    feld.addEventListener('change', async () => {
-      const datei = feld.files[0];
-      if (!datei) return;
-      melden(`${name} wird eingelesen …`);
-      try {
-        await mixer.spurLaden(name, datei);
-        reglerBox.classList.remove('hidden');
-        melden(`Geladen: ${['sprache', 'hintergrund', 'hall'].filter((s) => mixer.geladen(s)).join(', ')}`
-             + ` · Länge ${fmtClock(mixer.laenge())}`);
-      } catch (e) {
-        melden(`${name} ließ sich nicht lesen: ${e.message}`, 'error');
-      }
-    });
-  }
-
-  // Regler wirken sofort auf die laufende Wiedergabe.
-  view.querySelectorAll('[id^="pegel-"]').forEach((r) => {
-    r.addEventListener('input', () => {
-      const spur = r.dataset.spur;
-      $(`#pegelWert-${spur}`).textContent = r.value;
-      mixer.pegelSetzen(spur, r.value);
-    });
-  });
-
-  $('#stemPlay').addEventListener('click', () => {
-    if (!mixer.geladen('sprache') && !mixer.geladen('hintergrund') && !mixer.geladen('hall')) {
-      return melden('Erst mindestens eine Spur auswählen.', 'error');
-    }
-    // Ab der zuletzt erreichten Stelle weiter, nicht immer von vorn.
-    const ab = mixer.position() >= mixer.laenge() - 0.2 ? 0 : mixer.position();
-    mixer.abspielen(ab, pegel());
-    melden(`Läuft ab ${fmtClock(ab)} — die Regler wirken sofort.`);
-  });
-
-  $('#stemStop').addEventListener('click', () => {
-    mixer.stoppen();
-    melden(`Angehalten bei ${fmtClock(mixer.position())}.`);
-  });
-
-  $('#stemUebernehmen').addEventListener('click', async () => {
-    if (!localAudio?.lokalMoeglich()) {
-      return melden('Das Mischen braucht einen Rechner, am Handy geht es nicht.', 'error');
-    }
-    if (!felder.sprache.files[0] && !felder.hintergrund.files[0] && !felder.hall.files[0]) {
-      return melden('Erst mindestens eine Spur auswählen.', 'error');
-    }
-    mixer.stoppen();
-
-    const btn = $('#stemUebernehmen');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Rechnet …';
-    info.innerHTML = `<div class="progress" style="margin-top:10px;"><div class="progress-fill indeterminate" id="stemFill"></div></div>
-                      <p class="field-hint" id="stemText">Wird vorbereitet …</p>`;
-    const setz = (pct, text) => {
-      const f = $('#stemFill');
-      if (f) {
-        if (typeof pct === 'number') { f.classList.remove('indeterminate'); f.style.width = `${pct}%`; }
-        else f.classList.add('indeterminate');
-      }
-      if ($('#stemText')) $('#stemText').textContent = text;
-    };
-    arbeitetGerade = true;
-
-    try {
-      const mischung = await localAudio.spurenMischen(
-        { sprache: felder.sprache.files[0], hintergrund: felder.hintergrund.files[0], hall: felder.hall.files[0] },
-        pegel(),
-        (text, pct) => setz(pct, text));
-
-      setz(null, 'Mischung wird hochgeladen …');
-      const fd = new FormData();
-      fd.append('fertig', mischung, 'folge.mp3');
-      await uploadMitFortschritt(`/api/episodes/${encodeURIComponent(id)}/fertig`, fd,
-        (a, b) => setz(Math.round((a / b) * 100), `Wird hochgeladen: ${Math.round((a / b) * 100)} %`));
-
-      arbeitetGerade = false;
-      toast('Mischung übernommen ✓ — jetzt anhören.');
-      renderEpisode(id);
-    } catch (e) {
-      arbeitetGerade = false;
-      melden(`Fehler: ${e.message}`, 'error');
-      btn.disabled = false; btn.textContent = 'Übernehmen';
-    }
-  });
 }
 
 // Liest die Regler im Kasten „Klang nachjustieren" aus. Beide Knöpfe – Gerät

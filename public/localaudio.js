@@ -24,6 +24,9 @@ const UTIL = `${BASE}/util.js`;
 let ffmpegInstanz = null;
 let ladeVersuch = null;
 
+// Muss zum gleichnamigen Wert in src/audio.js passen (Cold-Open-Überblendung).
+const INTRO_UEBERBLENDUNG = 5; // Sekunden
+
 // Nur anbieten, wo es auch sinnvoll ist: genug Speicher und kein Telefon.
 // Gibt bei Ablehnung den Grund zurück, damit die App ihn anzeigen kann.
 export function lokalPruefen() {
@@ -178,11 +181,21 @@ export async function lokalZusammenbauen(teile, rahmen, onStatus) {
 
     // Alle Segmente auf ein einheitliches Format bringen und aneinanderhängen.
     const eingaben = reihenfolge.flatMap((f) => ['-i', f]);
-    const vorbereiten = reihenfolge
-      .map((_, i) => `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo,aresample=44100[a${i}]`)
-      .join(';');
-    const zusammen = reihenfolge.map((_, i) => `[a${i}]`).join('');
-    const filter = `${vorbereiten};${zusammen}concat=n=${reihenfolge.length}:v=0:a=1[out]`;
+    const teileFilter = reihenfolge
+      .map((_, i) => `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo,aresample=44100[a${i}]`);
+
+    // Cold Open: die letzten Sekunden des Intros liegen über dem Anfang des
+    // ersten Teils (Sprache sofort voll da, Musik blendet aus) – dieselbe
+    // Überblendung wie auf dem Server.
+    let stroeme = reihenfolge.map((_, i) => `a${i}`);
+    if (intro && dateien.length) {
+      teileFilter.push(`[a0][a1]acrossfade=d=${INTRO_UEBERBLENDUNG}:c1=tri:c2=nofade[ax]`);
+      stroeme = ['ax', ...stroeme.slice(2)];
+    }
+    const zusammen = stroeme.length === 1
+      ? `[${stroeme[0]}]anull[out]`
+      : `${stroeme.map((s) => `[${s}]`).join('')}concat=n=${stroeme.length}:v=0:a=1[out]`;
+    const filter = [...teileFilter, zusammen].join(';');
 
     onStatus?.('Folge wird zusammengebaut …', 0);
     await ffmpeg.exec([
@@ -260,68 +273,5 @@ export async function lokalAufbereiten(datei, einstellungen, onStatus) {
   } finally {
     ffmpeg.off('log', logHandler);
     ffmpeg.off('progress', progHandler);
-  }
-}
-
-/**
- * Mischt die drei Adobe-Spuren (Sprache, Hintergrund, Hall) zu einer MP3.
- *
- * Adobe Enhance zerlegt eine Aufnahme in genau diese drei; hier werden sie mit
- * je eigener Lautstärke wieder zusammengeführt. 100 % heißt „so laut wie in der
- * Originalaufnahme", 0 % heißt „ganz raus".
- *
- * spuren: { sprache: File, hintergrund: File|null, hall: File|null }
- * pegel:  { sprache: 0..200, hintergrund: 0..200, hall: 0..200 }  (Prozent)
- */
-export async function spurenMischen(spuren, pegel, onStatus) {
-  const ffmpeg = await ffmpegHolen(onStatus);
-
-  const liste = [
-    { schluessel: 'sprache', datei: spuren.sprache },
-    { schluessel: 'hintergrund', datei: spuren.hintergrund },
-    { schluessel: 'hall', datei: spuren.hall },
-  ].filter((s) => s.datei);
-
-  if (!liste.length) throw new Error('Keine Spur ausgewählt.');
-
-  const namen = [];
-  const ausgang = 'mischung.mp3';
-  try {
-    for (let i = 0; i < liste.length; i++) {
-      onStatus?.(`Spur ${i + 1} von ${liste.length} wird eingelesen …`, null);
-      const name = `spur${i}${endung(liste[i].datei.name)}`;
-      await ffmpeg.writeFile(name, new Uint8Array(await liste[i].datei.arrayBuffer()));
-      namen.push(name);
-    }
-
-    // Je Spur die Lautstärke setzen, dann zusammenmischen. normalize=0 ist
-    // wichtig: sonst senkt amix automatisch ab, sobald mehrere Spuren laufen —
-    // die eingestellten Verhältnisse wären dann nicht mehr die eingestellten.
-    const eingaben = namen.flatMap((n) => ['-i', n]);
-    const pegelKette = liste
-      .map((s, i) => {
-        const wert = Math.max(0, Math.min(200, Number(pegel[s.schluessel] ?? 100))) / 100;
-        return `[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${wert.toFixed(3)}[v${i}]`;
-      })
-      .join(';');
-    const eingehend = liste.map((_, i) => `[v${i}]`).join('');
-    const filter = namen.length === 1
-      ? `${pegelKette};[v0]anull[out]`
-      : `${pegelKette};${eingehend}amix=inputs=${namen.length}:duration=longest:normalize=0[out]`;
-
-    onStatus?.('Spuren werden gemischt …', 0);
-    await ffmpeg.exec([
-      ...eingaben,
-      '-filter_complex', filter,
-      '-map', '[out]',
-      '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', '-ac', '2',
-      ausgang,
-    ]);
-
-    const ergebnis = await ffmpeg.readFile(ausgang);
-    onStatus?.('Mischung fertig.', 100);
-    return new Blob([ergebnis.buffer], { type: 'audio/mpeg' });
-  } finally {
-    for (const n of [...namen, ausgang]) await ffmpeg.deleteFile(n).catch(() => {});
   }
 }

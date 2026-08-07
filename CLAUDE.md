@@ -139,6 +139,62 @@ die Bearbeitung **unwiderruflich**, und Stimmisolation ist auf Sprache getrimmt
 — Lachen kann darunter leiden. Bei einem Filmpodcast, der viel lacht, ist das
 ein echtes Risiko.
 
+## Render ist seit 07.08.2026 GESPERRT (Bandbreite aufgebraucht)
+
+Die 5 GB Gratis-Bandbreite des Hobby-Plans sind verbraucht; Render hat die
+Dienste **ausgesetzt**. Optionen laut Render-Mail: Karte hinterlegen
+(15 $ je 100 GB), auf Professional wechseln (500 GB), oder bis zur
+Zurücksetzung am Monatsanfang warten. **Bis dahin kommt kein Deploy an und
+die App ist nicht erreichbar.**
+
+Wohin die 5 GB gingen, ist von hier nicht einsehbar (kein Zugriff auf
+Render-Metriken) — plausible Haupttreiber, unbestätigt:
+
+- Jeder Neubau einer Folge lädt die fertige MP3 nach R2 hoch — bei einer
+  2-h-Folge ~200 MB **ausgehend** je Durchlauf. Mehrere Testrunden = Gigabytes.
+- „Klang nachjustieren" am Rechner holt die Originale **durch die App
+  hindurch** (`/parts/:id/file` streamt von R2 über Render zum Browser).
+- `public/vendor/ffmpeg` (31 MB) je Browser ohne Langzeit-Cache.
+- Transkriptions-Audio zu Gemini (~30 MB je 2-h-Folge, 32 kbit/s mono).
+
+Mögliche Abhilfen (noch NICHT gebaut): `/parts/:id/file` per 302 direkt auf
+die öffentliche R2-Adresse zeigen lassen (Achtung: braucht CORS-Regeln am
+Bucket, von hier nicht prüfbar, da `pub-….r2.dev` gesperrt) und lange
+Cache-Header für `vendor/`.
+
+Offene Frage des Nutzers: Warum nicht sein vorhandener Webspace bei
+`www.emefka.com`? Antwort hängt am Tarif — die App braucht einen dauerhaft
+laufenden Node-20-Prozess **plus ffmpeg**; klassischer Webspace (PHP/statisch)
+kann das nicht. Der Nutzer wollte nachsehen, ob sein Paket Node/SSH kann.
+
+## Intro: Cold Open mit Überblendung (seit 08/2026)
+
+- Neues Intro liegt als `seed/intro-coldopen.mp3` im Repo (28,9 s, 192 kbit/s).
+  `seedAssets()` ersetzt die alten Seed-Dateien `intro.wav`/`intro.mp3`
+  **automatisch** (Liste `ersetzt` in `src/seed.js`); selbst hochgeladene
+  Intros mit anderem Namen bleiben unangetastet. Alle drei Fälle lokal geprüft.
+- Die letzten **5 s** des Intros liegen ÜBER dem Anfang des ersten Teils:
+  `acrossfade=d=5:c1=tri:c2=nofade` — Sprache sofort voll da, Musik blendet
+  aus. Konstante `INTRO_UEBERBLENDUNG` in `src/audio.js` **und**
+  `public/localaudio.js` (muss synchron bleiben).
+- Drei Bauwege, alle angepasst: `buildEpisode` (Filterpfad),
+  `buildEpisodeCopy` (Schnellpfad: nur Intro + erste 10 s des Teils werden neu
+  kodiert, Rest ab Sekunde 10 per Stream-Copy — Schnitt sitzt auf
+  MP3-Rahmengrenze, ~26 ms Raster), `lokalZusammenbauen` (Browser).
+- **Geprüft im Browser** mit dem echten Intro: Folge = Intro + Teil − exakt 5 s;
+  RMS im Überlappfenster = Sprachpegel. **Die beiden Server-Wege sind hier
+  ungeprüft** (kein ffmpeg im Sandkasten) — beim ersten echten Bau anhören,
+  besonders die Schnittstelle bei ~Sekunde 10 nach dem Intro.
+- Zu kurze Intros/Teile (< 6 s) lösen den Rückfall auf harten Schnitt aus.
+- Alte Folgen behalten den harten Schnitt, bis sie neu zusammengebaut werden.
+
+## Adobe-Spurenmischer: wieder ausgebaut (07.08.2026)
+
+Auf Wunsch des Nutzers komplett entfernt (`public/stemmixer.js`, Kasten in der
+Folgenansicht, `spurenMischen()` in `localaudio.js`). Grund: Selbst-Hochladen
+der drei Adobe-Spuren war für ihn keine Option, und automatisch kommen die
+Spuren nie in die App (siehe Adobe-Abschnitt oben). Nicht wieder einbauen.
+
 ## Erreichbarkeit vom Sandkasten aus (geprüft)
 
 **Stand 06.08.2026: Der Nutzer hat die Netzsperre aufgehoben** — seither ist

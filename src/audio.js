@@ -19,6 +19,11 @@ const SAMPLE_RATE = 44100;
 const CHANNELS = 2;
 const BITRATE = '128k';
 
+// Das Cold-Open-Intro klingt aus, während die Aufnahme schon läuft: die
+// letzten Sekunden des Intros liegen ÜBER dem Anfang des ersten Teils
+// (acrossfade, Sprache sofort in voller Lautstärke, Musik blendet aus).
+const INTRO_UEBERBLENDUNG = 5; // Sekunden
+
 // Liest die Dauer (in Sekunden) einer Audiodatei aus.
 export function probeDuration(file) {
   return new Promise((resolve, reject) => {
@@ -96,6 +101,23 @@ export async function buildEpisodeCopy({ intro, mains, outro, outFile }) {
     }
   }
 
+  // Cold Open: die letzten Sekunden des Intros über den Anfang des ersten
+  // Teils legen. Nur Intro + die ersten ~10 s des Teils werden dafür neu
+  // kodiert, der Rest wird weiter kopiert – der Geschwindigkeitsvorteil
+  // dieses Wegs bleibt also erhalten. Scheitert die Überblendung, wird
+  // schlicht hart geschnitten wie bisher (Folge geht immer vor Feinschliff).
+  if (intro && fs.existsSync(intro) && vorbereitet.length >= 2) {
+    try {
+      const ersatz = await introUeberblenden({
+        intro: vorbereitet[0], teil1: vorbereitet[1], rate, ch,
+      });
+      vorbereitet.splice(0, 2, ...ersatz);
+      tmpFiles.push(...ersatz);
+    } catch (e) {
+      console.warn('Intro-Überblendung übersprungen:', e.message);
+    }
+  }
+
   // Concat-Liste schreiben und per Stream-Copy zusammenfügen.
   const listFile = path.join(paths.tmp, `list-${Date.now()}.txt`);
   fs.writeFileSync(listFile, vorbereitet.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
@@ -116,6 +138,63 @@ export async function buildEpisodeCopy({ intro, mains, outro, outFile }) {
   } finally {
     for (const f of tmpFiles) fs.rmSync(f, { force: true });
   }
+}
+
+// Blendet das Intro in den ersten Aufnahme-Teil über (Cold Open).
+// Liefert die Dateien, die Intro und Teil 1 in der Concat-Liste ersetzen.
+async function introUeberblenden({ intro, teil1, rate, ch }) {
+  const d = INTRO_UEBERBLENDUNG;
+  const introDauer = (await probe(intro)).duration;
+  const teilDauer = (await probe(teil1)).duration;
+  if (introDauer < d + 1) throw new Error(`Intro zu kurz für ${d} s Überblendung (${introDauer}s).`);
+  if (teilDauer < d + 1) throw new Error(`Erster Teil zu kurz für die Überblendung (${teilDauer}s).`);
+
+  const KOPF = d + 5; // so viele Sekunden des Teils werden mitkodiert (Reserve)
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const kopf = path.join(paths.tmp, `kopf-${stamp}.mp3`);
+
+  if (teilDauer <= KOPF + d) {
+    // Sehr kurzer erster Teil: komplett mit einrechnen, kein Abtrennen nötig.
+    await crossfadeDatei({ a: intro, b: teil1, dauerB: null, out: kopf, rate, ch });
+    return [kopf];
+  }
+
+  await crossfadeDatei({ a: intro, b: teil1, dauerB: KOPF, out: kopf, rate, ch });
+
+  // Rest des ersten Teils ab KOPF ohne Neukodierung abtrennen. Der Schnitt
+  // sitzt auf der nächsten MP3-Rahmengrenze (~26 ms Raster) – bei laufender
+  // Sprache unhörbar, und nur so bleibt der Weg auch bei 2-h-Folgen schnell.
+  const rest = path.join(paths.tmp, `rest-${stamp}.mp3`);
+  await new Promise((resolve, reject) => {
+    ffmpeg(teil1)
+      .outputOptions(['-ss', String(KOPF), '-c', 'copy'])
+      .on('error', reject).on('end', resolve)
+      .save(rest);
+  });
+  return [kopf, rest];
+}
+
+// Kodiert a + b mit acrossfade zu einer Datei. dauerB begrenzt, wie viel von b
+// eingelesen wird (null = ganz). c2=nofade: die Sprache startet sofort in
+// voller Lautstärke, nur die Intro-Musik blendet aus.
+function crossfadeDatei({ a, b, dauerB, out, rate, ch }) {
+  const layout = ch === 1 ? 'mono' : 'stereo';
+  const basis = `aformat=sample_rates=${rate}:channel_layouts=${layout},aresample=${rate}`;
+  return new Promise((resolve, reject) => {
+    const cmd = ffmpeg(a).input(b);
+    if (dauerB) cmd.inputOptions([`-t`, String(dauerB)]);
+    cmd
+      .complexFilter([
+        `[0:a]${basis}[i0]`,
+        `[1:a]${basis}[i1]`,
+        `[i0][i1]acrossfade=d=${INTRO_UEBERBLENDUNG}:c1=tri:c2=nofade[out]`,
+      ], 'out')
+      .audioCodec('libmp3lame').audioBitrate(BITRATE)
+      .audioFrequency(rate).audioChannels(ch)
+      .format('mp3')
+      .on('error', reject).on('end', resolve)
+      .save(out);
+  });
 }
 
 // Sucht das RNNoise-Modell. Eigene Datei im Datenordner hat Vorrang, sonst die
@@ -220,13 +299,23 @@ function mainChain({ enhance, trimSilence }) {
 // etwa Vorgespräch und Spoilerteil, manchmal zusätzlich Wiederholungen.
 // Alle Segmente werden neu kodiert und normalisiert. Auf die Aufnahmen wird
 // – falls gewünscht – die KI-/DSP-Sprachoptimierung angewendet.
-export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence, onProgress }) {
+export async function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence, onProgress }) {
   const mains = (Array.isArray(main) ? main : [main]).filter(Boolean);
   const ordered = [
     { file: intro, isMain: false },
     ...mains.map((file) => ({ file, isMain: true })),
     { file: outro, isMain: false },
   ].filter((seg) => seg.file && fs.existsSync(seg.file));
+
+  // Cold Open: Intro in den ersten Teil überblenden – aber nur, wenn beide
+  // lang genug sind, sonst bräche acrossfade den ganzen Bau ab.
+  let ueberblenden = false;
+  if (ordered.length >= 2 && !ordered[0].isMain && ordered[1].isMain) {
+    try {
+      const [di, dt] = await Promise.all([probe(ordered[0].file), probe(ordered[1].file)]);
+      ueberblenden = di.duration > INTRO_UEBERBLENDUNG + 1 && dt.duration > INTRO_UEBERBLENDUNG + 1;
+    } catch { /* im Zweifel hart schneiden */ }
+  }
 
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
@@ -240,8 +329,17 @@ export function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence
       const chain = processing ? `${processing},${base}` : base;
       filterParts.push(`[${i}:a]${chain}[a${i}]`);
     });
-    const concatInputs = ordered.map((_, i) => `[a${i}]`).join('');
-    filterParts.push(`${concatInputs}concat=n=${ordered.length}:v=0:a=1[out]`);
+
+    let stroeme = ordered.map((_, i) => `a${i}`);
+    if (ueberblenden) {
+      filterParts.push(`[a0][a1]acrossfade=d=${INTRO_UEBERBLENDUNG}:c1=tri:c2=nofade[ax]`);
+      stroeme = ['ax', ...stroeme.slice(2)];
+    }
+    if (stroeme.length === 1) {
+      filterParts.push(`[${stroeme[0]}]anull[out]`);
+    } else {
+      filterParts.push(`${stroeme.map((s) => `[${s}]`).join('')}concat=n=${stroeme.length}:v=0:a=1[out]`);
+    }
 
     command
       .complexFilter(filterParts, 'out')
