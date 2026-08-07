@@ -10,7 +10,6 @@ import { buildEpisode, buildEpisodeCopy, probeDuration } from '../audio.js';
 import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
-import { dolbyAktiv, dolbyVerbessern } from '../dolby.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
 import { generatePeaks, cutRegions } from '../waveform.js';
@@ -34,12 +33,6 @@ const upload = multer({
 // hörbar sauberer, ohne dass die Stimmen dumpf werden.
 const STANDARD_STAERKE = 20;
 const STANDARD_PAUSE = 2;
-
-// Startwerte für die Dolby-Regler. Rauschen: Stufe 1 von 0–3 („mittel"), weil
-// Dolby dort feste Stufen statt Prozent nimmt. Sprachhervorhebung (0–100 %)
-// startet bei 0 – sie verändert den Klang deutlich und soll bewusst dazu.
-const STANDARD_DOLBY_RAUSCHEN = 1;
-const STANDARD_DOLBY_SPRACHE = 0;
 
 // Zahl aus einer Formular-/JSON-Angabe lesen. Anders als `Number(x) || standard`
 // bleibt hier eine echte 0 erhalten.
@@ -103,13 +96,6 @@ router.post('/', uploadFelder, async (req, res) => {
     enhance: {
       enabled: req.body.enhance === 'true' || req.body.enhance === '1',
       strength: zahl(req.body.strength, STANDARD_STAERKE, 0, 100),
-    },
-    // Echte KI-Sprachverbesserung über Dolby.io – nur wenn ein Schlüssel
-    // hinterlegt ist. Kostet Rechenminuten, deshalb standardmäßig aus.
-    dolby: {
-      enabled: req.body.dolby === 'true' || req.body.dolby === '1',
-      rauschen: zahl(req.body.dolbyRauschen, STANDARD_DOLBY_RAUSCHEN, 0, 3),
-      sprache: zahl(req.body.dolbySprache, STANDARD_DOLBY_SPRACHE, 0, 100),
     },
     // Lange Sprechpausen automatisch kürzen.
     trimSilence: {
@@ -550,14 +536,6 @@ router.put('/:id', (req, res) => {
     };
     ep.needsRebuild = true;
   }
-  if (req.body.dolby && typeof req.body.dolby === 'object') {
-    ep.dolby = {
-      enabled: Boolean(req.body.dolby.enabled),
-      rauschen: zahl(req.body.dolby.rauschen, STANDARD_DOLBY_RAUSCHEN, 0, 3),
-      sprache: zahl(req.body.dolby.sprache, STANDARD_DOLBY_SPRACHE, 0, 100),
-    };
-    ep.needsRebuild = true;
-  }
   if (req.body.trimSilence && typeof req.body.trimSilence === 'object') {
     ep.trimSilence = {
       enabled: Boolean(req.body.trimSilence.enabled),
@@ -744,47 +722,7 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
 
-    // ---- KI-Sprachverbesserung über Dolby.io ----
-    // Läuft VOR dem Zusammenbauen und nur auf den Aufnahmen, damit Intro und
-    // Outro (Musik) unangetastet bleiben. Alle Teile werden dafür einmal zu
-    // einer Datei zusammengelegt – ein Auftrag statt einer je Teil, das spart
-    // Freiminuten. Scheitert Dolby, geht es mit der lokalen Kette weiter;
-    // eine fertige Folge ist mehr wert als eine perfekte, die nie entsteht.
-    let bauTeile = partPaths;
-    let dolbyLief = false;
-    let dolbyFehler = '';
-    let dolbyHinweis = '';
-    if (ep.dolby?.enabled && !fertigDatei && !ep.lokalBearbeitet) {
-      if (!dolbyAktiv()) {
-        dolbyFehler = 'Kein Dolby-Schlüssel hinterlegt (DOLBY_API_KEY in den Umgebungsvariablen).';
-      } else {
-        const dolbyRoh = path.join(paths.tmp, `dolby-in-${id}.mp3`);
-        const dolbyFein = path.join(paths.tmp, `dolby-out-${id}.mp3`);
-        tmpFiles.push(dolbyRoh, dolbyFein);
-        try {
-          melde('Aufnahmen werden für Dolby zusammengelegt …');
-          await buildEpisodeCopy({ intro: null, mains: partPaths, outro: null, outFile: dolbyRoh });
-          const erg = await dolbyVerbessern({
-            datei: dolbyRoh,
-            ziel: dolbyFein,
-            regler: ep.dolby,
-            melde: (text, prozent) => melde(text, prozent),
-          });
-          dolbyHinweis = erg.hinweis;
-          bauTeile = [dolbyFein];
-          dolbyLief = true;
-        } catch (err) {
-          console.error('Dolby-Sprachverbesserung fehlgeschlagen:', err.message);
-          dolbyFehler = err.message;
-        }
-      }
-    }
-
-    // Nach Dolby wäre die eigene Rauschunterdrückung doppelt gemoppelt – sie
-    // würde die schon bereinigte Sprache nur dumpfer machen. Pausenkürzung
-    // bleibt davon unberührt.
-    const enhanceJetzt = dolbyLief ? { enabled: false } : ep.enhance;
-    const filterNoetig = !ep.lokalBearbeitet && (enhanceJetzt?.enabled || ep.trimSilence?.enabled);
+    const filterNoetig = !ep.lokalBearbeitet && (ep.enhance?.enabled || ep.trimSilence?.enabled);
 
     let duration, size;
     if (fertigDatei) {
@@ -798,15 +736,15 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
       // Das geht auch bei zweistündigen Folgen in Sekunden.
       melde('Folge wird zusammengefügt …');
       ({ duration, size } = await buildEpisodeCopy({
-        intro: introPath, mains: bauTeile, outro: outroPath, outFile: outPath,
+        intro: introPath, mains: partPaths, outro: outroPath, outFile: outPath,
       }));
     } else {
       // Nur wenn ausdrücklich Optimierung gewünscht ist: der aufwendige Weg mit
       // Neukodierung. Für lange Folgen auf kleinen Servern nicht zu empfehlen.
       melde('Audio wird optimiert und zusammengebaut …', 0);
       ({ duration, size } = await buildEpisode({
-        intro: introPath, main: bauTeile, outro: outroPath, outFile: outPath,
-        enhance: enhanceJetzt,
+        intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
+        enhance: ep.enhance,
         trimSilence: ep.trimSilence,
         onProgress: ({ prozent }) => melde('Audio wird optimiert und zusammengebaut …', prozent),
       }));
@@ -818,11 +756,6 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     const audioUrl = await uploadFile(outPath, audioKey, 'audio/mpeg');
 
     ep = getEpisode(id);
-    ep.dolbyStand = ep.dolby?.enabled
-      ? (dolbyLief ? 'ok' : 'fehler')
-      : '';
-    ep.dolbyError = dolbyFehler;
-    ep.dolbyHinweis = dolbyHinweis;
     ep.audioKey = audioKey;
     ep.audioUrl = `${audioUrl}${audioUrl.includes('?') ? '&' : '?'}v=${Date.now()}`; // Zwischenspeicher umgehen
     ep.duration = duration;

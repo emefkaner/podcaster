@@ -73,51 +73,63 @@ Zwei Repos mit identischem Inhalt:
 Jede Änderung gehört in **beide**. Ist `podcaster` nicht angebunden, per
 `add_repo` holen; der Klon liegt dann unter `/workspace/podcaster`.
 
-## KI-Sprachverbesserung: Dolby statt Adobe (07.08.2026 entschieden)
+## KI-Sprachverbesserung: entschieden am 07.08.2026 — keine externe API
 
-**Adobe ist erledigt — nicht noch einmal aufrollen.** Adobes eigene Übersicht
-(`https://developer.adobe.com/audio-video-firefly-services/`, von hier abrufbar)
-listet genau fünf Audio/Video-APIs: Dynamic Graphics Render, Reframe, Translate
-& Lip Sync, Text-to-Speech, Text-to-Avatar. **Keine Sprachverbesserung.**
-„Enhance Speech" existiert nur in Adobes Oberfläche. Blogs behaupten eine API —
-Adobes Doku ist die verlässlichere Quelle. Das Chat-Werkzeug
-`media_enhance_speech` liefert sein Ergebnis ausschließlich ins Widget des
-Nutzers, nie in die App.
+**Ergebnis: RNNoise lokal, sonst nichts.** Der Nutzer will keinen bezahlten
+Dienst; die Verbesserung soll stattdessen schon **bei der Aufnahme auf dem
+iPhone** passieren (Apples „Stimmisolation", siehe unten). Kein Anbieter mehr
+vorschlagen, ohne dass er danach fragt.
 
-**Gebaut wurde stattdessen `src/dolby.js`** (Dolby.io Media Enhance):
+Was geprüft wurde, damit es niemand zweimal prüft:
 
-- Ablauf (belegt über Dolbys eigene Postman-Sammlung im Repo
-  `dolbyio-samples/media-api-samples`): `POST /media/input` → PUT der Datei →
-  `POST /media/enhance` → `GET /media/enhance?job_id=` bis „Success" →
-  `GET /media/output?url=dlb://…`.
-- Läuft **vor** dem Zusammenbauen und nur auf den Aufnahmen, damit Intro/Outro
-  (Musik) unangetastet bleiben. Alle Teile werden zu **einer** Datei
-  zusammengelegt — ein Auftrag statt einer je Teil, das spart Freiminuten.
-- Scheitert Dolby, wird die Folge trotzdem fertig gebaut (lokale Kette), und
-  der Grund landet in `ep.dolbyError`.
-- 200 Minuten je Monat frei, danach ca. 0,05 $/Min. Der Nutzer sagt, 200 Min
-  reiche fast immer.
+- **Adobe hat keine Enhance-API.** Adobes eigene Übersicht
+  (`https://developer.adobe.com/audio-video-firefly-services/`) listet genau
+  fünf Audio/Video-APIs: Dynamic Graphics Render, Reframe, Translate & Lip Sync,
+  Text-to-Speech, Text-to-Avatar. „Enhance Speech" gibt es nur in Adobes
+  Oberfläche. Das Chat-Werkzeug `media_enhance_speech` liefert sein Ergebnis
+  ausschließlich ins Widget des Nutzers, nie in die App.
+- **Dolby.io ist als Media-API tot.** `dolby.io` leitet auf
+  `optiview.dolby.com` um, `docs.dolby.io/media-apis/docs` landet auf
+  `optiview.dolby.com/docs/`, und `…/docs/media-apis/` gibt **404**. Die
+  Produktliste der neuen Doku kennt nur noch Player, Ads, Live und Real-time.
+  `api.dolby.com/media/enhance` antwortet zwar noch mit 401 — vermutlich für
+  Bestandskunden. Eine schon gebaute Anbindung wurde deshalb wieder entfernt.
+  **Lehre: bei einer Empfehlung nicht nur den Funktionsumfang prüfen, sondern
+  auch, ob das Produkt überhaupt noch verkauft wird.**
+- **Auphonic wäre der beste Ersatz** (falls das Thema je wiederkommt):
+  podcast-spezifisch, und die komplette Parameterliste liegt **ohne Schlüssel**
+  offen unter `https://auphonic.com/api/info/algorithms.json` — belegt sind u. a.
+  `denoisemethod` (`speech_isolation`), `denoiseamount` (Off…100 dB),
+  `filtermethod` (`studiovoice`), `levelerstrength`. Haken: gratis nur 2 h/Monat
+  **mit eingemischtem Jingle**, sonst Credits.
 
-**Die eine ungeprüfte Stelle:** `docs.dolby.io` ist vom Proxy gesperrt
-(EGRESS_BLOCKED), die dortige `openapi.json` liefert nur die SPA-Hülle. Wörtlich
-belegt sind nur `content.type`, `audio.noise.reduction.amount` und
-`audio.speech.isolation.enable`. `audio.speech.isolation.amount` ist plausibel,
-aber **nicht nachgelesen**. Deshalb versucht `dolbyVerbessern` bei einer 400/422
-noch einmal ohne die ungeprüften Felder. **Sobald ein Schlüssel vorliegt: gegen
-die echte API durchprobieren und diesen Absatz streichen.**
+**Gebaut und behalten wurde nur:** `assets/rnnoise.rnn` (Modell
+`beguiling-drafter` aus `GregorR/rnnoise-models`, laut deren README
+ausdrücklich gemeinfrei; passend für Signal „Voice" inkl. Lachen bei
+Aufnahmeraum-Rauschen). `enhanceChain()` in `src/audio.js` schaltet `arnndn`
+dazu — aber nur, wenn `ffmpeg -filters` den Filter wirklich kennt, sonst bräche
+die ganze Folge ab. **Ob Renders ffmpeg `arnndn` mitbringt, ist ungeprüft** (in
+dieser Umgebung gibt es kein ffmpeg); die App schreibt es beim ersten Lauf ins
+Protokoll.
 
-Regler: Störgeräusche sind bei Dolby **vier feste Stufen** (`low`/`medium`/
-`high`/`max`), deshalb ist der Regler bewusst vierstufig (0–3) und nicht
-stufenlos — „0 %" würde ein Abschalten versprechen, das es nicht gibt.
-Sprachhervorhebung ist 0–100, 0 = aus.
+### Der eigentliche Weg: Apples „Stimmisolation" beim Aufnehmen
 
-**Zusätzlich lokal (kostenlos):** `assets/rnnoise.rnn` liegt jetzt im Repo
-(Modell `beguiling-drafter` aus `GregorR/rnnoise-models`, ausdrücklich
-gemeinfrei; passend für Signal „Voice" inkl. Lachen bei Aufnahmeraum-Rauschen).
-`enhanceChain()` schaltet `arnndn` dazu — aber nur, wenn `ffmpeg -filters` den
-Filter wirklich kennt; sonst bräche sonst die ganze Folge ab. **Ob Renders
-ffmpeg `arnndn` mitbringt, ist ungeprüft** (in dieser Umgebung gibt es kein
-ffmpeg); die App schreibt es beim ersten Lauf ins Protokoll.
+Belegt aus Apples eigener Doku (`support.apple.com/de-de/101993` und das
+iPhone-Handbuch zu „Sprachmemos"):
+
+- **Ab iOS 26** lässt sich die Stimmisolation in **Aufnahme-Apps** verwenden —
+  vorher ging sie nur bei Anrufen. Geräte: iPhone XR / XS und neuer.
+- Weg: während der Aufnahme Kontrollzentrum öffnen → **„[App]-Steuerungen"** →
+  unter **„Audio & Video"** → **„Stimmisolation"**.
+- Die Auswahl gilt **je App** und bleibt dort aktiv, bis man sie umstellt.
+- Ob Safari (und damit die Aufnahme in podcast3r selbst) den Mikrofonmodus
+  anbietet, ist **ungeprüft** — Apple schreibt nur „bestimmte Apps von
+  Drittanbietern". Der Nutzer sieht das in 30 Sekunden am Gerät.
+
+Wichtig als Gegenargument, falls er unsicher wird: Beim Aufnehmen angewandt ist
+die Bearbeitung **unwiderruflich**, und Stimmisolation ist auf Sprache getrimmt
+— Lachen kann darunter leiden. Bei einem Filmpodcast, der viel lacht, ist das
+ein echtes Risiko.
 
 ## Erreichbarkeit vom Sandkasten aus (geprüft)
 

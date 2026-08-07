@@ -38,7 +38,6 @@ Auf dem Handy braucht die Mikrofon-Aufnahme **HTTPS** (lokal geht `localhost`).
 | `SESSION_SECRET`    | langer Zufallswert zum Signieren der Login-Cookies          |
 | `PUBLIC_URL`        | öffentliche Adresse der App, z. B. `https://…onrender.com`  |
 | `GEMINI_API_KEY`    | **Empfohlen:** Transkription **und** Infotext ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)) |
-| `DOLBY_API_KEY`     | KI-Sprachverbesserung über Dolby.io ([dashboard.dolby.io](https://dashboard.dolby.io)), 200 Min/Monat frei |
 | `OPENAI_API_KEY`    | optionale Alternative zur Transkription (Whisper)           |
 | `ANTHROPIC_API_KEY` | optionale Alternative für den Infotext (Claude)             |
 | `DATA_DIR`          | Lokaler Zwischenspeicher / Fallback (Render: `/data`)       |
