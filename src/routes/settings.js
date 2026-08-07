@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
-import { getSettings, saveSettings } from '../store.js';
-import { uploadFile, deleteKey, publicUrl, downloadToFile } from '../storage.js';
+import { getSettings, saveSettings, coverUrlOf } from '../store.js';
+import { uploadFile, deleteKey, downloadToFile } from '../storage.js';
 import { DEFAULT_CREW } from '../describe.js';
 
 const router = express.Router();
@@ -77,6 +77,7 @@ router.post(
         if (current[kind] && current[kind] !== filename) await deleteKey(`assets/${current[kind]}`);
         await uploadFile(f.path, `assets/${filename}`, contentType);
         patch[kind] = filename;
+        if (kind === 'cover') patch.coverStand = new Date().toISOString();
       } catch (e) {
         console.error(`Hochladen von ${kind} fehlgeschlagen:`, e);
         fehler.push(`${kind}: ${e.message}`);
@@ -123,7 +124,7 @@ router.post('/cover-from-url', async (req, res) => {
     if (current.cover && current.cover !== filename) await deleteKey(`assets/${current.cover}`);
 
     await uploadFile(tmp, `assets/${filename}`, typ);
-    const next = saveSettings({ cover: filename });
+    const next = saveSettings({ cover: filename, coverStand: new Date().toISOString() });
     res.json({ ...next, coverUrl: coverUrlOf(next) });
   } catch (e) {
     console.error('Cover von Adresse übernehmen fehlgeschlagen:', e);
@@ -132,10 +133,6 @@ router.post('/cover-from-url', async (req, res) => {
     fs.rmSync(tmp, { force: true });
   }
 });
-
-function coverUrlOf(s) {
-  return s.cover ? publicUrl(`assets/${s.cover}`) : '';
-}
 
 // Intro/Outro/Cover über die eigene App ausliefern.
 // Nötig, weil der Browser Dateien von fremden Adressen (dem R2-Speicher) nur mit

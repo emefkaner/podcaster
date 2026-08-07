@@ -130,6 +130,14 @@ try {
   try { leerJson = await leer.json(); } catch { /* kein JSON */ }
   pruefe('Upload ohne Datei nennt den Grund', leer.status() === 400 && Boolean(leerJson?.error),
     `HTTP ${leer.status()}: ${leerJson?.error ?? '(kein JSON)'}`);
+
+  // Ein neues Cover liegt unter demselben Dateinamen. Ohne wechselndes
+  // Anhängsel zeigen Browser und Podcast-Apps ewig das alte Bild.
+  const { saveSettings, coverUrlOf } = await import('../src/store.js');
+  const a = coverUrlOf(saveSettings({ cover: 'cover.jpg', coverStand: '2026-01-01T00:00:00.000Z' }));
+  const bb = coverUrlOf(saveSettings({ cover: 'cover.jpg', coverStand: '2026-08-07T12:00:00.000Z' }));
+  pruefe('Cover-Adresse ändert sich beim Austausch', a !== bb && a.includes('?v=') && bb.includes('?v='),
+    `vorher ${a} / nachher ${bb}`);
   pruefe('Cover-Generator-Karte ist entfernt', !einstellungen.includes('Cover-Generator'));
 
   // ---- Feed ----

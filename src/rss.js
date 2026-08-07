@@ -1,7 +1,6 @@
 import { config } from './config.js';
-import { getSettings, listEpisodes } from './store.js';
+import { getSettings, listEpisodes, coverUrlOf } from './store.js';
 import { formatDuration } from './audio.js';
-import { publicUrl } from './storage.js';
 
 // XML-Sonderzeichen maskieren.
 function esc(str = '') {
@@ -50,7 +49,7 @@ export function buildFeed() {
     .filter((e) => e.status === 'published' && !istEingeplant(e, jetzt))
     .sort((a, b) => feedDatum(b) - feedDatum(a));
 
-  const coverUrl = s.cover ? publicUrl(`assets/${s.cover}`) : '';
+  const coverUrl = coverUrlOf(s);
 
   const items = published
     .map((e) => {

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { paths, defaultSettings } from './config.js';
-import { storageEnabled, putJson, getJson } from './storage.js';
+import { storageEnabled, putJson, getJson, publicUrl } from './storage.js';
 
 // Sehr einfache "Datenbank": zwei JSON-Dateien.
 // Lokale Datei = schnelle Quelle der Wahrheit; bei aktivem R2 wird jede Änderung
@@ -76,4 +76,22 @@ export function saveSettings(patch) {
   const next = { ...getSettings(), ...patch };
   writeJson(paths.settings, next);
   return next;
+}
+
+// Öffentliche Adresse des Podcast-Covers – MIT Versionsanhängsel.
+//
+// Wichtig: Ein neues Cover landet unter demselben Namen (`assets/cover.jpg`).
+// Ohne Anhängsel bleibt die Adresse also byteweise identisch, und Browser,
+// CDN und Podcast-Apps zeigen weiter ihr zwischengespeichertes altes Bild —
+// die Datei auf dem Server ist längst die neue. Genau daran hing das „es wird
+// immer noch das alte Cover angezeigt".
+//
+// Das Anhängsel kommt aus `coverStand` und ändert sich nur, wenn das Cover
+// wirklich gewechselt wurde. So bleibt das Zwischenspeichern dazwischen heil.
+export function coverUrlOf(s = getSettings()) {
+  if (!s.cover) return '';
+  const basis = publicUrl(`assets/${s.cover}`);
+  const stand = Date.parse(s.coverStand || '');
+  if (!Number.isFinite(stand)) return basis;
+  return `${basis}${basis.includes('?') ? '&' : '?'}v=${stand}`;
 }
