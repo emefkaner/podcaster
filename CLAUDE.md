@@ -176,12 +176,40 @@ Erster Sparumbau GEBAUT: `vendor/` (31 MB ffmpeg.wasm) und `assets/` werden
 mit `maxAge: 30d` ausgeliefert. Bei einem ffmpeg-Update deshalb die
 Dateinamen/Pfade ändern, sonst hängen Browser bis 30 Tage auf dem alten Stand.
 
+## Fehler müssen beim Nutzer ankommen (07.08.2026)
+
+Der Cover-Upload „ging nicht" und meldete nur **„Fehler: Fehler"**. Ursache war
+nicht der Upload, sondern dass es **nirgends eine Fehlerbehandlung gab**:
+Express lieferte bei jedem Wurf eine HTML-Seite, `api()` im Frontend sucht darin
+ein `error`-Feld, findet keins und wirft `new Error('Fehler')`.
+
+Behoben an drei Stellen:
+
+- **`src/server.js`**: letzter Express-Handler wandelt jeden Fehler in JSON
+  (inkl. Multer-Sonderfall `LIMIT_FILE_SIZE` → „Die Datei ist zu groß").
+- **`/api/settings/assets`**: jede Datei einzeln abgesichert. Scheitert das
+  Cover, kommen Intro und Outro trotzdem an, und der Grund steht in der
+  Antwort.
+- **Frontend**: Fehler stehen jetzt **fest** unter dem Knopf statt in einem
+  Toast, der nach Sekunden weg ist.
+
+**Lehre: Eine Meldung, die den Grund nicht nennt, ist ein Defekt** — auch wenn
+der eigentliche Weg funktioniert. Sonst sucht man beim nächsten Mal wieder von
+vorn.
+
+Neu dazu: **`POST /api/settings/cover-from-url`** — Podcast-Cover von einer
+Adresse übernehmen, wie in der Folge auch. Gerade für die Higgsfield-Adressen
+praktisch. **Achtung beim Testen im Sandkasten:** Nodes `fetch` benutzt den
+Proxy **nicht** (curl schon), fremde Adressen geben hier 403. Erfolgsfall
+deshalb gegen einen lokalen `python3 -m http.server` prüfen.
+
 ## Intro: Cold Open mit Überblendung (seit 08/2026)
 
-- Neues Intro liegt als `seed/intro-coldopen.mp3` im Repo (28,9 s, 192 kbit/s).
-  `seedAssets()` ersetzt die alten Seed-Dateien `intro.wav`/`intro.mp3`
-  **automatisch** (Liste `ersetzt` in `src/seed.js`); selbst hochgeladene
-  Intros mit anderem Namen bleiben unangetastet. Alle drei Fälle lokal geprüft.
+- Neues Intro liegt als `seed/intro-coldopen.mp3` im Repo (28,9 s, 192 kbit/s),
+  neues Outro als `seed/outro-lasttake.mp3` (65,6 s). `seedAssets()` ersetzt die
+  alten Seed-Dateien `intro.wav`/`outro.wav` **automatisch** (Liste `ersetzt` in
+  `src/seed.js`); selbst hochgeladene Dateien mit anderem Namen bleiben
+  unangetastet. Alle vier Fälle lokal geprüft (frisch, alt, eigene, aktuell).
 - Die letzten **5 s** des Intros liegen ÜBER dem Anfang des ersten Teils:
   `acrossfade=d=5:c1=tri:c2=nofade` — Sprache sofort voll da, Musik blendet
   aus. Konstante `INTRO_UEBERBLENDUNG` in `src/audio.js` **und**

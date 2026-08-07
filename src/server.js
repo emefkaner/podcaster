@@ -81,6 +81,22 @@ app.use('/assets', express.static(path.join(publicDir, 'assets'), { maxAge: '30d
 // Übrige statische Dateien (JS/CSS/Manifest/Service-Worker).
 app.use(express.static(publicDir));
 
+// Letzte Instanz: JEDEN durchgereichten Fehler als JSON beantworten.
+//
+// Ohne das schickt Express eine HTML-Fehlerseite. Die App sucht darin ein
+// `error`-Feld, findet keins und zeigt „Fehler: Fehler" – womit niemand etwas
+// anfangen kann. Genau daran war beim Cover-Upload nicht zu erkennen, was
+// eigentlich schiefging. Multer meldet sich hier ebenfalls (z. B. „Datei zu
+// groß"), deshalb der Sonderfall.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  console.error(`Fehler bei ${req.method} ${req.path}:`, err);
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Die Datei ist zu groß.' });
+  }
+  res.status(err?.status || 500).json({ error: err?.message || 'Unbekannter Serverfehler' });
+});
+
 // Beim Start Metadaten aus dem R2-Backup wiederherstellen, mitgelieferte
 // Startdateien (Intro/Outro) übernehmen, dann lauschen.
 initStore()

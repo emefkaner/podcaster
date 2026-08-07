@@ -1490,6 +1490,14 @@ async function renderSettings() {
       <label>Cover-Bild (Pflicht für Spotify, quadratisch ≥ 1400px) ${s.cover ? '✓ gesetzt' : ''}</label>
       <input type="file" id="a_cover" accept="image/*" />
       <button class="btn primary" id="saveAssets" style="margin-top:14px;">Dateien hochladen</button>
+      <div id="assetInfo"></div>
+
+      <label style="margin-top:18px;">Oder Cover von einer Adresse übernehmen</label>
+      <input type="text" id="coverUrlInput" placeholder="https://… (Adresse des fertigen Covers einfügen)" />
+      <button class="btn" id="coverUrlBtn" style="margin-top:8px;">Übernehmen</button>
+      <p class="field-hint">Die App lädt das Bild selbst herunter — du musst es nicht erst auf den Rechner holen.</p>
+      <div id="coverUrlInfo"></div>
+
       ${s.coverUrl ? `<img src="${s.coverUrl}" alt="Cover" style="width:120px;height:120px;object-fit:cover;border-radius:12px;margin-top:14px;" />` : ''}
     </div>
 
@@ -1568,13 +1576,49 @@ async function renderSettings() {
 
   $('#saveAssets').addEventListener('click', async () => {
     const fd = new FormData();
-    if ($('#a_intro').files[0]) fd.append('intro', $('#a_intro').files[0]);
-    if ($('#a_outro').files[0]) fd.append('outro', $('#a_outro').files[0]);
-    if ($('#a_cover').files[0]) fd.append('cover', $('#a_cover').files[0]);
+    const gewaehlt = [];
+    for (const art of ['intro', 'outro', 'cover']) {
+      const datei = $(`#a_${art}`).files[0];
+      if (datei) { fd.append(art, datei); gewaehlt.push(`${art} (${(datei.size / 1048576).toFixed(1)} MB)`); }
+    }
+    const info = $('#assetInfo');
+    if (!gewaehlt.length) {
+      info.innerHTML = '<p class="error">Erst eine Datei auswählen.</p>';
+      return;
+    }
+
     const btn = $('#saveAssets');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Lädt …';
-    try { await api('/api/settings/assets', { method: 'POST', body: fd }); toast('Hochgeladen.'); renderSettings(); }
-    catch (e) { toast('Fehler: ' + e.message); btn.disabled = false; btn.textContent = 'Dateien hochladen'; }
+    info.innerHTML = `<p class="field-hint">Wird hochgeladen: ${escapeHtml(gewaehlt.join(', '))} …</p>`;
+    try {
+      await api('/api/settings/assets', { method: 'POST', body: fd });
+      toast('Hochgeladen.');
+      renderSettings();
+    } catch (e) {
+      // Den echten Grund zeigen und STEHEN LASSEN – ein Toast ist nach ein paar
+      // Sekunden weg, und genau die Meldung braucht man zum Weitersuchen.
+      info.innerHTML = `<p class="error">Hochladen fehlgeschlagen: ${escapeHtml(e.message)}</p>`;
+      btn.disabled = false; btn.textContent = 'Dateien hochladen';
+    }
+  });
+
+  $('#coverUrlBtn')?.addEventListener('click', async () => {
+    const feld = $('#coverUrlInput'), info = $('#coverUrlInfo'), btn = $('#coverUrlBtn');
+    const url = feld.value.trim();
+    if (!url) { info.innerHTML = '<p class="error">Erst eine Adresse einfügen.</p>'; return; }
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Holt …';
+    info.innerHTML = '';
+    try {
+      await api('/api/settings/cover-from-url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      toast('Cover übernommen.');
+      renderSettings();
+    } catch (e) {
+      info.innerHTML = `<p class="error">Ging nicht: ${escapeHtml(e.message)}</p>`;
+      btn.disabled = false; btn.textContent = 'Übernehmen';
+    }
   });
 }
 

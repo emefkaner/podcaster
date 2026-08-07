@@ -121,6 +121,15 @@ try {
   const einstellungen = await page.textContent('body');
   pruefe('Systemstatus geladen', einstellungen.includes('Speicher:'));
   pruefe('Crew-Feld vorhanden', (await page.locator('#s_crew').count()) === 1);
+  pruefe('Cover von Adresse übernehmen vorhanden', (await page.locator('#coverUrlBtn').count()) === 1);
+
+  // Serverfehler müssen als JSON mit lesbarem Grund zurückkommen. Vorher kam
+  // eine HTML-Seite, und die App zeigte nur „Fehler: Fehler".
+  const leer = await page.request.post(`${BASE}/api/settings/assets`);
+  let leerJson = null;
+  try { leerJson = await leer.json(); } catch { /* kein JSON */ }
+  pruefe('Upload ohne Datei nennt den Grund', leer.status() === 400 && Boolean(leerJson?.error),
+    `HTTP ${leer.status()}: ${leerJson?.error ?? '(kein JSON)'}`);
   pruefe('Cover-Generator-Karte ist entfernt', !einstellungen.includes('Cover-Generator'));
 
   // ---- Feed ----

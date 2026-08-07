@@ -14,7 +14,8 @@ const SEEDS = [
   // Cold-Open-Intro (seit 08/2026). Ersetzt das alte intro.wav automatisch,
   // damit der Wechsel ohne Handgriff in der laufenden App ankommt.
   { key: 'intro', files: ['intro-coldopen.mp3'], ersetzt: ['intro.wav', 'intro.mp3'], type: 'audio' },
-  { key: 'outro', files: ['outro.wav', 'outro.mp3'], type: 'audio' },
+  // Outro „Last Take" (seit 08/2026). Ersetzt das alte outro.wav automatisch.
+  { key: 'outro', files: ['outro-lasttake.mp3'], ersetzt: ['outro.wav', 'outro.mp3'], type: 'audio' },
   { key: 'cover', files: ['cover.jpg', 'cover.png'], type: 'image' },
 ];
 

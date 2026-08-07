@@ -57,25 +57,81 @@ router.post(
   async (req, res) => {
     const current = getSettings();
     const patch = {};
-    for (const kind of ['intro', 'outro', 'cover']) {
-      const f = req.files?.[kind]?.[0];
-      if (!f) continue;
+    const hochgeladen = ['intro', 'outro', 'cover'].filter((k) => req.files?.[k]?.[0]);
+    if (!hochgeladen.length) {
+      return res.status(400).json({ error: 'Keine Datei ausgewählt.' });
+    }
+
+    // Jede Datei einzeln absichern: Geht das Cover schief, sollen Intro und
+    // Outro trotzdem ankommen – und der Grund muss beim Nutzer landen, nicht
+    // nur im Serverprotokoll. Vorher endete jeder Fehler hier als nacktes
+    // „Fehler", weil Express eine HTML-Seite zurückgab.
+    const fehler = [];
+    for (const kind of hochgeladen) {
+      const f = req.files[kind][0];
       const ext = path.extname(f.originalname) || (kind === 'cover' ? '.jpg' : '.mp3');
       const filename = `${kind}${ext}`;
-      const key = `assets/${filename}`;
       const contentType = kind === 'cover' ? (f.mimetype || 'image/jpeg') : (f.mimetype || 'audio/mpeg');
-
-      // Alte Datei mit abweichender Endung aufräumen.
-      if (current[kind] && current[kind] !== filename) await deleteKey(`assets/${current[kind]}`);
-
-      await uploadFile(f.path, key, contentType);
-      fs.rmSync(f.path, { force: true }); // tmp aufräumen
-      patch[kind] = filename;
+      try {
+        // Alte Datei mit abweichender Endung aufräumen.
+        if (current[kind] && current[kind] !== filename) await deleteKey(`assets/${current[kind]}`);
+        await uploadFile(f.path, `assets/${filename}`, contentType);
+        patch[kind] = filename;
+      } catch (e) {
+        console.error(`Hochladen von ${kind} fehlgeschlagen:`, e);
+        fehler.push(`${kind}: ${e.message}`);
+      } finally {
+        fs.rmSync(f.path, { force: true }); // tmp aufräumen
+      }
     }
-    const next = saveSettings(patch);
+
+    const next = Object.keys(patch).length ? saveSettings(patch) : current;
+    if (fehler.length) {
+      return res.status(500).json({
+        error: fehler.join(' · '),
+        gespeichert: Object.keys(patch),
+        ...next, coverUrl: coverUrlOf(next),
+      });
+    }
     res.json({ ...next, coverUrl: coverUrlOf(next) });
   }
 );
+
+// Podcast-Cover von einer Adresse übernehmen – so wie in der Folge auch.
+// Spart den Umweg über „herunterladen, dann wieder hochladen", wenn das Bild
+// ohnehin schon irgendwo im Netz liegt.
+router.post('/cover-from-url', async (req, res) => {
+  const url = String(req.body?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'Bitte eine vollständige Adresse angeben (http:// oder https://).' });
+  }
+
+  const tmp = path.join(paths.tmp, `cover-url-${Date.now()}`);
+  try {
+    const antwort = await fetch(url);
+    if (!antwort.ok) throw new Error(`Bild nicht abrufbar (HTTP ${antwort.status}).`);
+    const typ = (antwort.headers.get('content-type') || '').split(';')[0].trim();
+    if (!typ.startsWith('image/')) throw new Error(`Das ist kein Bild, sondern „${typ || 'unbekannt'}".`);
+
+    const daten = Buffer.from(await antwort.arrayBuffer());
+    if (!daten.length) throw new Error('Das Bild kam leer zurück.');
+    fs.writeFileSync(tmp, daten);
+
+    const ext = typ === 'image/png' ? '.png' : typ === 'image/webp' ? '.webp' : '.jpg';
+    const filename = `cover${ext}`;
+    const current = getSettings();
+    if (current.cover && current.cover !== filename) await deleteKey(`assets/${current.cover}`);
+
+    await uploadFile(tmp, `assets/${filename}`, typ);
+    const next = saveSettings({ cover: filename });
+    res.json({ ...next, coverUrl: coverUrlOf(next) });
+  } catch (e) {
+    console.error('Cover von Adresse übernehmen fehlgeschlagen:', e);
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
 
 function coverUrlOf(s) {
   return s.cover ? publicUrl(`assets/${s.cover}`) : '';
