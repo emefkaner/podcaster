@@ -36,6 +36,12 @@ export const config = {
   // Modelle das Konto nutzen darf, und nimmt davon das beste. So geht nichts
   // kaputt, wenn Google ein Modell abschaltet.
   geminiModel: process.env.GEMINI_MODEL || '',
+  // Dolby.io Media Enhance – die eigentliche KI-Sprachverbesserung.
+  // Ohne Schlüssel bleibt es bei der lokalen ffmpeg-Kette (inkl. RNNoise).
+  // 200 Minuten je Monat sind frei, danach kostet es Geld.
+  dolby: {
+    key: process.env.DOLBY_API_KEY || '',
+  },
   // Optionale Alternativen.
   openaiKey: process.env.OPENAI_API_KEY || '',
   anthropicKey: process.env.ANTHROPIC_API_KEY || '',

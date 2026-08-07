@@ -49,6 +49,9 @@ danach, nicht zwischen die Schritte.
   `/opt/pw-browsers/chromium` (`executablePath` mitgeben). `ffmpeg`/`ffprobe`
   gibt es in dieser Umgebung **nicht** — Audio-Wege lassen sich hier also nicht
   durchspielen, nur die Oberfläche.
+- Der Rauchtest braucht hier `PLAYWRIGHT_CHROMIUM=/opt/pw-browsers/chromium`:
+  `PLAYWRIGHT_CHROMIUM=/opt/pw-browsers/chromium node test/smoke.mjs`.
+  Ohne das sucht Playwright eine Browser-Fassung, die im Abbild nicht liegt.
 - **Testskripte gehören NICHT ins Repo.** Sie landen dort sonst als
   unversionierte Dateien und der Stop-Hook meckert zu Recht. Damit ein Skript
   im Kritzelordner `playwright` auflösen kann, einmal einen Verweis anlegen:
@@ -70,29 +73,51 @@ Zwei Repos mit identischem Inhalt:
 Jede Änderung gehört in **beide**. Ist `podcaster` nicht angebunden, per
 `add_repo` holen; der Klon liegt dann unter `/workspace/podcaster`.
 
-## Offener Wunsch: Adobe Enhance mit eigenen Reglern
+## KI-Sprachverbesserung: Dolby statt Adobe (07.08.2026 entschieden)
 
-Ziel des Nutzers. Noch nicht gebaut — hier festgehalten, damit es nicht verloren geht.
+**Adobe ist erledigt — nicht noch einmal aufrollen.** Adobes eigene Übersicht
+(`https://developer.adobe.com/audio-video-firefly-services/`, von hier abrufbar)
+listet genau fünf Audio/Video-APIs: Dynamic Graphics Render, Reframe, Translate
+& Lip Sync, Text-to-Speech, Text-to-Avatar. **Keine Sprachverbesserung.**
+„Enhance Speech" existiert nur in Adobes Oberfläche. Blogs behaupten eine API —
+Adobes Doku ist die verlässlichere Quelle. Das Chat-Werkzeug
+`media_enhance_speech` liefert sein Ergebnis ausschließlich ins Widget des
+Nutzers, nie in die App.
 
-`media_enhance_speech` (Adobe-Werkzeug in diesem Chat) trennt eine Aufnahme in
-**drei Spuren**: bereinigte Sprache, Hintergrund, Hall. Genau diese drei soll
-der Nutzer in der App **einzeln rein- und rausdrehen** können — also drei
-Regler statt eines einzigen „Stärke"-Reglers. Das Mischen selbst ist einfach
-(Lautstärke je Spur, dann zusammenmischen) und könnte im Browser laufen; die
-offene Frage ist allein, woher die drei Spuren kommen.
+**Gebaut wurde stattdessen `src/dolby.js`** (Dolby.io Media Enhance):
 
-Was dabei **ungeklärt** ist:
+- Ablauf (belegt über Dolbys eigene Postman-Sammlung im Repo
+  `dolbyio-samples/media-api-samples`): `POST /media/input` → PUT der Datei →
+  `POST /media/enhance` → `GET /media/enhance?job_id=` bis „Success" →
+  `GET /media/output?url=dlb://…`.
+- Läuft **vor** dem Zusammenbauen und nur auf den Aufnahmen, damit Intro/Outro
+  (Musik) unangetastet bleiben. Alle Teile werden zu **einer** Datei
+  zusammengelegt — ein Auftrag statt einer je Teil, das spart Freiminuten.
+- Scheitert Dolby, wird die Folge trotzdem fertig gebaut (lokale Kette), und
+  der Grund landet in `ep.dolbyError`.
+- 200 Minuten je Monat frei, danach ca. 0,05 $/Min. Der Nutzer sagt, 200 Min
+  reiche fast immer.
 
-- Ob Adobe Enhance eine öffentliche API mit eigenen Zugangsdaten hat, was sie
-  kostet und ob das Abo des Nutzers sie abdeckt. **Von hier nicht prüfbar:**
-  `developer.adobe.com`, `podcast.adobe.com`, `firefly-api.adobe.io` und
-  `ims-na1.adobelogin.com` sind alle gesperrt (curl: 000). Die Werkzeuge in
-  diesem Chat laufen über einen anderen Kanal und sagen nichts darüber aus.
-- Ob der Browser direkt zu Adobe hochladen darf (CORS). Sonst liefe alles über
-  Render — und dessen Bandbreite ist knapp (5 GB frei, davon 70 % verbraucht).
+**Die eine ungeprüfte Stelle:** `docs.dolby.io` ist vom Proxy gesperrt
+(EGRESS_BLOCKED), die dortige `openapi.json` liefert nur die SPA-Hülle. Wörtlich
+belegt sind nur `content.type`, `audio.noise.reduction.amount` und
+`audio.speech.isolation.enable`. `audio.speech.isolation.amount` ist plausibel,
+aber **nicht nachgelesen**. Deshalb versucht `dolbyVerbessern` bei einer 400/422
+noch einmal ohne die ungeprüften Felder. **Sobald ein Schlüssel vorliegt: gegen
+die echte API durchprobieren und diesen Absatz streichen.**
 
-**Der Nutzer testet das zu Hause in seinem freien Netz.** Hier im Sandkasten
-lässt es sich nicht durchspielen — das ist erwartet, kein Fehler.
+Regler: Störgeräusche sind bei Dolby **vier feste Stufen** (`low`/`medium`/
+`high`/`max`), deshalb ist der Regler bewusst vierstufig (0–3) und nicht
+stufenlos — „0 %" würde ein Abschalten versprechen, das es nicht gibt.
+Sprachhervorhebung ist 0–100, 0 = aus.
+
+**Zusätzlich lokal (kostenlos):** `assets/rnnoise.rnn` liegt jetzt im Repo
+(Modell `beguiling-drafter` aus `GregorR/rnnoise-models`, ausdrücklich
+gemeinfrei; passend für Signal „Voice" inkl. Lachen bei Aufnahmeraum-Rauschen).
+`enhanceChain()` schaltet `arnndn` dazu — aber nur, wenn `ffmpeg -filters` den
+Filter wirklich kennt; sonst bräche sonst die ganze Folge ab. **Ob Renders
+ffmpeg `arnndn` mitbringt, ist ungeprüft** (in dieser Umgebung gibt es kein
+ffmpeg); die App schreibt es beim ersten Lauf ins Protokoll.
 
 ## Erreichbarkeit vom Sandkasten aus (geprüft)
 
@@ -107,9 +132,13 @@ einem kurzen `curl` prüfen statt raten.
 | `generativelanguage.googleapis.com` | **erreichbar** (Gemini antwortet selbst) |
 | `<account>.r2.cloudflarestorage.com` | **erreichbar** (S3-API antwortet) |
 | `registry.npmjs.org`, `api.anthropic.com` | erreichbar |
+| `raw.githubusercontent.com` | **erreichbar** (Rohdateien fremder Repos holen) |
+| `api.dolby.com` | **erreichbar** (antwortet mit 401 ohne Schlüssel) |
+| `developer.adobe.com`, `podcast.adobe.com`, `ims-na1.adobelogin.com` | **erreichbar** (Stand 07.08. — die alte „gesperrt"-Notiz war überholt) |
 | `pub-….r2.dev` (öffentliche R2-Adresse) | gesperrt |
 | `cinespasten.emefka.com` (die App) | gesperrt |
-| alle Adobe-Hosts, `api.github.com`, `www.google.com` | gesperrt |
+| `api.github.com`, `www.google.com` | gesperrt |
+| `docs.dolby.io`, `dev.to`, `elevenlabs.io` | gesperrt (WebFetch: EGRESS_BLOCKED) |
 
 Wichtig: In `SETUP-WERTE.md` stehen **keine** R2-Schlüssel (nur Bucket,
 Account-ID, öffentliche Adresse). Ohne Schlüssel kein Zugriff auf die Bilder im

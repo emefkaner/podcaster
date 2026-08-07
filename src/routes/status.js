@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { getSettings, listEpisodes } from '../store.js';
 import { storageEnabled } from '../storage.js';
 import { geminiModellName } from '../gemini.js';
+import { dolbyAktiv } from '../dolby.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -29,8 +30,12 @@ router.get('/', async (req, res) => {
     schluessel: {
       gemini: Boolean(config.geminiKey),
       anchor: Boolean(config.anchor.email && config.anchor.password),
+      dolby: dolbyAktiv(),
     },
     geminiModell,
+    sprachverbesserung: dolbyAktiv()
+      ? 'Dolby.io (KI, 200 Minuten je Monat frei)'
+      : 'nur lokal (RNNoise + ffmpeg) – für Dolby fehlt DOLBY_API_KEY',
     dateien: {
       intro: s.intro || null,
       outro: s.outro || null,

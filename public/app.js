@@ -172,9 +172,11 @@ async function renderHome() {
         <label for="strength">Stärke: <span id="strengthVal">20</span>%</label>
         <input type="range" id="strength" min="0" max="100" value="20" style="width:100%;" />
         <p class="field-hint">Dezent (links) bis stark (rechts). 20 % ist der Standard und klingt natürlich.
-          <b>Keine KI</b>, sondern klassische Filter: Hochpass gegen Rumpeln, spektrale Rauschunterdrückung,
-          Kompressor, Lautheitsangleich. Sie schneiden Störgeräusche weg — aufgedreht nehmen sie die Stimme mit.
-          Wird es dumpf oder blechern, war es zu stark.</p>
+          Läuft direkt hier bzw. auf dem Server und kostet nichts: ein kleines neuronales Netz (RNNoise)
+          gegen Umgebungsgeräusche, dazu Hochpass, spektrale Rauschunterdrückung, Kompressor und
+          Lautheitsangleich. Aufgedreht nehmen die Filter die Stimme mit — wird es dumpf oder blechern,
+          war es zu stark. Für die <b>richtige</b> Sprachverbesserung gibt es in der fertigen Folge den
+          Dolby-Regler.</p>
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
@@ -710,6 +712,35 @@ async function renderEpisode(id) {
       </div>
 
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
+        <b style="font-size:.95rem;">🤖 KI-Sprachverbesserung (Dolby)</b>
+        <p class="field-hint" style="margin-top:4px;">Echte KI, kein Filter: Dolby trennt Stimmen von allem
+          anderen und baut die Aufnahme neu auf. Rechnet auf Dolbys Servern — läuft deshalb auch am Handy,
+          anders als „Klang nachjustieren" darunter. <b>200 Minuten je Monat sind frei.</b></p>
+
+        <div id="dolbyStatus"></div>
+        ${dolbyStandText(ep)}
+
+        <label style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <input type="checkbox" id="dolbyChk" ${ep.dolby?.enabled ? 'checked' : ''} style="width:auto;" />
+          Sprachverbesserung anwenden
+        </label>
+
+        <label for="dolbyRauschen">Störgeräusche entfernen: <span id="dolbyRauschenVal">${RAUSCH_NAMEN[ep.dolby?.rauschen ?? 1]}</span></label>
+        <input type="range" id="dolbyRauschen" min="0" max="3" step="1" value="${ep.dolby?.rauschen ?? 1}" style="width:100%;" />
+        <p class="field-hint">Raumhall, Lüfter, Straße. Vier Stufen — mehr gibt Dolby nicht her, deshalb ist
+          der Regler hier bewusst nicht stufenlos.</p>
+
+        <label for="dolbySprache">Stimmen hervorheben: <span id="dolbySpracheVal">${ep.dolby?.sprache ?? 0}</span>%</label>
+        <input type="range" id="dolbySprache" min="0" max="100" step="1" value="${ep.dolby?.sprache ?? 0}" style="width:100%;" />
+        <p class="field-hint">Holt die Sprache nach vorn und drückt den Rest zurück. Auf 0 bleibt das aus.
+          Aufgedreht klingt der Raum verschwunden — das mögen manche, andere finden es steril.</p>
+
+        <button class="btn primary" id="dolbyBtn" style="margin-top:10px;">Mit Dolby neu berechnen</button>
+        <p class="field-hint">Läuft auf dem Server. Du kannst die Seite dabei schließen — der Fortschritt
+          steht beim nächsten Öffnen oben.</p>
+      </div>
+
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
         <b style="font-size:.95rem;">🎚️ Klang nachjustieren</b>
         <p class="field-hint" style="margin-top:4px;">Wird immer aus den <b>Originalaufnahmen</b> neu berechnet — du kannst also beliebig oft probieren, ohne Qualität zu verlieren.</p>
 
@@ -839,6 +870,7 @@ async function renderEpisode(id) {
 
   wireParts(id, ep);
   wireNachjustieren(id, ep);
+  wireDolby(id);
   wireSpurenMischer(id);
 
   $('#epImageUrlBtn')?.addEventListener('click', async () => {
@@ -1082,6 +1114,90 @@ function klangStandText(ep) {
 
   const wann = ep.klangStand ? ` · zuletzt berechnet ${fmtDateTime(ep.klangStand)}` : '';
   return `${teile.join(', ')}${wann}`;
+}
+
+// Zeigt, was Dolby beim letzten Durchlauf gemacht hat — Erfolg, Fehler oder
+// gar nicht erst versucht. Ohne diese Zeile bliebe unklar, ob die hörbare
+// Fassung schon die verbesserte ist.
+// Namen der vier Dolby-Stufen. Muss zu RAUSCH_NAMEN in src/dolby.js passen.
+const RAUSCH_NAMEN = ['leicht', 'mittel', 'stark', 'maximal'];
+
+function dolbyStandText(ep) {
+  if (ep.dolbyStand === 'ok') {
+    const teile = [`Störgeräusche ${RAUSCH_NAMEN[ep.dolby?.rauschen ?? 1]}`];
+    if (ep.dolby?.sprache) teile.push(`${ep.dolby.sprache} % Stimmen hervorgehoben`);
+    const hinweis = ep.dolbyHinweis
+      ? `<br /><span class="muted">${escapeHtml(ep.dolbyHinweis)}</span>` : '';
+    return `<p class="field-hint" style="margin:8px 0 0;padding:8px 10px;border-left:3px solid var(--purple);background:var(--surface);border-radius:0 8px 8px 0;">
+              <b>Angewendet:</b> ${teile.join(', ')}${hinweis}
+            </p>`;
+  }
+  if (ep.dolbyStand === 'fehler') {
+    return `<p class="error" style="margin:8px 0 0;">Dolby hat nicht funktioniert: ${escapeHtml(ep.dolbyError || 'kein Grund genannt')}
+            <br /><span class="muted">Die Folge wurde trotzdem fertig gebaut — mit der lokalen Bereinigung.</span></p>`;
+  }
+  return '';
+}
+
+// Dolby-Regler verdrahten. Der Schlüssel liegt auf dem Server; ob einer da ist,
+// verrät /api/status. Ohne Schlüssel bleiben die Regler stehen, statt beim
+// Klicken mit einem Fehler zu enden.
+let dolbyVerfuegbar = null;
+async function dolbyBereit() {
+  if (dolbyVerfuegbar !== null) return dolbyVerfuegbar;
+  try {
+    const s = await api('/api/status');
+    dolbyVerfuegbar = Boolean(s?.schluessel?.dolby);
+  } catch {
+    dolbyVerfuegbar = false;
+  }
+  return dolbyVerfuegbar;
+}
+
+function wireDolby(id) {
+  const chk = $('#dolbyChk'), btn = $('#dolbyBtn');
+  if (!btn) return;
+  const rausch = $('#dolbyRauschen'), sprach = $('#dolbySprache'), status = $('#dolbyStatus');
+
+  rausch.addEventListener('input', () => { $('#dolbyRauschenVal').textContent = RAUSCH_NAMEN[rausch.value]; });
+  sprach.addEventListener('input', () => { $('#dolbySpracheVal').textContent = sprach.value; });
+
+  dolbyBereit().then((bereit) => {
+    if (bereit || !$('#dolbyBtn')) return;
+    for (const el of [chk, rausch, sprach, btn]) el.disabled = true;
+    status.innerHTML = `<p class="error" style="margin:8px 0 0;">Noch kein Dolby-Schlüssel hinterlegt.
+      <br /><span class="muted">In den Umgebungsvariablen des Servers <b>DOLBY_API_KEY</b> setzen, dann
+      neu starten. Bis dahin bleibt es bei der lokalen Bereinigung.</span></p>`;
+  });
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Wird gestartet …';
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dolby: {
+            enabled: chk.checked,
+            rauschen: Number(rausch.value),
+            sprache: Number(sprach.value),
+          },
+        }),
+      });
+      // Nur das Audio neu bauen. Transkript und Infotext bleiben, wie sie sind —
+      // sie hängen nicht am Klang und würden nur Zeit und Kontingent kosten.
+      await api(`/api/episodes/${encodeURIComponent(id)}/build`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ withText: false }),
+      });
+      toast('Dolby rechnet — der Fortschritt steht oben.');
+      renderEpisode(id);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Mit Dolby neu berechnen';
+      status.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+    }
+  });
 }
 
 // Adobe-Spuren mischen: drei Dateien, drei Regler, Vorhören im Browser.

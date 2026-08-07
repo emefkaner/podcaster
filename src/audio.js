@@ -1,7 +1,11 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import ffmpeg from 'fluent-ffmpeg';
 import { paths } from './config.js';
+
+const repoWurzel = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // System-ffmpeg verwenden (im Docker-Image per apt installiert). Optional lassen
 // sich die Pfade über Umgebungsvariablen überschreiben. Fällt sonst auf das
@@ -114,6 +118,37 @@ export async function buildEpisodeCopy({ intro, mains, outro, outFile }) {
   }
 }
 
+// Sucht das RNNoise-Modell. Eigene Datei im Datenordner hat Vorrang, sonst die
+// mitgelieferte aus dem Repo.
+function rnnoiseModell() {
+  const kandidaten = [
+    path.join(paths.media, 'assets', 'rnnoise.rnn'),
+    path.join(repoWurzel, 'assets', 'rnnoise.rnn'),
+  ];
+  return kandidaten.find((p) => fs.existsSync(p)) || null;
+}
+
+// Prüft EINMAL, ob das vorhandene ffmpeg den Filter arnndn überhaupt kennt.
+// Ohne diese Prüfung würde ein ffmpeg ohne den Filter die komplette Folge mit
+// „No such filter" abbrechen – statt einfach etwas schlechter zu klingen.
+let arnndnBekannt = null;
+function kannArnndn() {
+  if (arnndnBekannt !== null) return arnndnBekannt;
+  try {
+    const bin = process.env.FFMPEG_PATH || 'ffmpeg';
+    const liste = execFileSync(bin, ['-hide_banner', '-filters'], {
+      encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024,
+    });
+    arnndnBekannt = /\barnndn\b/.test(liste);
+  } catch {
+    arnndnBekannt = false;
+  }
+  if (!arnndnBekannt) {
+    console.warn('ffmpeg kennt den Filter arnndn nicht – RNNoise wird übersprungen.');
+  }
+  return arnndnBekannt;
+}
+
 // Baut die Filter-Kette für die KI-/DSP-Sprachoptimierung der Hauptaufnahme.
 // strength: 0..100 (Regler in der App). "Dezent" bei niedrigen Werten,
 // aggressiver bei hohen. Läuft komplett lokal über ffmpeg – kostet nichts.
@@ -124,11 +159,12 @@ function enhanceChain(strength) {
   // 1) Tiefes Rumpeln entfernen (Motor, Klimaanlage, Wind).
   parts.push('highpass=f=90');
 
-  // 2) Optional: RNNoise-Modell, falls vorhanden (deutlich stärker gegen
-  //    Umgebungsgeräusche wie Restaurant/Auto). Datei einfach nach
-  //    data/assets/rnnoise.rnn legen – ansonsten wird es übersprungen.
-  const rnn = path.join(paths.media, 'assets', 'rnnoise.rnn');
-  if (fs.existsSync(rnn)) {
+  // 2) RNNoise: ein echtes neuronales Netz gegen Umgebungsgeräusche. Das Modell
+  //    liegt im Repo unter assets/rnnoise.rnn und wird deshalb normalerweise
+  //    immer gefunden; eine eigene Datei unter data/media/assets/rnnoise.rnn
+  //    sticht sie, falls jemand ein anderes Modell ausprobieren will.
+  const rnn = rnnoiseModell();
+  if (rnn && kannArnndn()) {
     parts.push(`arnndn=m='${rnn.replace(/\\/g, '/')}'`);
   }
 

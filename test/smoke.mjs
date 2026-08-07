@@ -99,6 +99,21 @@ try {
   pruefe('Cover-Generator ist entfernt', !folgentext.includes('Cover generieren'));
   pruefe('Bild von Adresse übernehmen vorhanden', (await page.locator('#epImageUrlBtn').count()) === 1);
 
+  // Dolby-Regler: müssen da sein, und ohne Schlüssel gesperrt statt stumm
+  // ins Leere laufen.
+  pruefe('Dolby-Regler vorhanden', (await page.locator('#dolbyRauschen').count()) === 1
+    && (await page.locator('#dolbySprache').count()) === 1);
+  await page.waitForTimeout(600); // /api/status abwarten
+  pruefe('Ohne Dolby-Schlüssel ist der Knopf gesperrt',
+    await page.locator('#dolbyBtn').isDisabled(),
+    'DOLBY_API_KEY war im Test nicht gesetzt — der Knopf müsste deaktiviert sein.');
+  pruefe('Regler bewegt die Anzeige', await (async () => {
+    await page.locator('#dolbyRauschen').evaluate((el) => {
+      el.value = '3'; el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    return (await page.textContent('#dolbyRauschenVal')) === 'maximal';
+  })());
+
   // Speichern muss durchgehen.
   await page.fill('#epTitle', 'Rauchtest-Folge (geändert)');
   await page.click('#saveBtn');
