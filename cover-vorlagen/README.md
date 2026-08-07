@@ -51,11 +51,30 @@ die Originale nehmen.
 Die Ausschnitte landen standardmäßig in `gesichter/` und sind per `.gitignore`
 ausgeschlossen — sie sind Arbeitsmaterial, kein Repo-Inhalt.
 
-## Verwendung
+## Verwendung — zwei Vorlagen, zwei Aufgaben
 
-Diese Bilder werden im Chat als Referenz an das Bildmodell gegeben, damit
-Figuren und Stil über die Folgen hinweg gleich bleiben. Der Ablauf steht in
-`CLAUDE.md` unter „Cover erzeugen — Ablauf auf Zuruf".
+**Wichtig, teuer gelernt:** Diese Cover taugen nur als **Stil**-Vorlage, nicht
+als Gesichts-Vorlage. Sie sind selbst schon eine Zeichnung nach einem Foto —
+wer sie als Gesichtsquelle nimmt, kopiert eine Kopie, und die Figuren geraten
+generisch. Genau daran sind die ersten Versuche gescheitert.
+
+Richtig ist:
+
+| Vorlage | Wofür |
+|---|---|
+| **Originalfoto der drei** (liegt nicht im Repo, siehe unten) | die Gesichter |
+| `03-hail-mary.jpg` | ausschließlich der Zeichenstil |
+
+Aus dem Foto werden die drei Gesichter **einzeln ausgeschnitten** (Skript:
+`cover-vorlagen/gesichter-ausschneiden.mjs`) und zusammen mit dem Stil-Cover als
+Referenzen an `flux_2` gegeben. Im Auftrag ausdrücklich schreiben, welche
+Referenz wofür gilt — sonst kopiert das Modell den Inhalt des Stil-Covers.
+
+Das **Foto selbst liegt bewusst nicht im Repo** (`podcaster` ist öffentlich).
+Der Nutzer schickt es bei Bedarf in den Chat; hochgeladen wird es nur zu
+Higgsfield.
+
+Der Ablauf steht in `CLAUDE.md` unter „Cover erzeugen — Ablauf auf Zuruf".
 
 In der App gibt es **keinen** Cover-Generator mehr. Ein fertiges Bild kommt über
 „Bild von einer Adresse übernehmen" oder den Upload in die Folge.

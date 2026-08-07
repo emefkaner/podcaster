@@ -145,10 +145,21 @@ Folgen-Cover erzeugt. Regeln dafür:
    Ähnlichkeitsschutz für reale Personen, weil die Vorlagen erkennbare
    Karikaturen sind. Nicht erneut durchprobieren — direkt `flux_2` nehmen.
 
-   Referenzbilder kommen über `media_import_url` mit der Rohadresse aus dem
-   öffentlichen Repo hinein, z. B.
-   `https://raw.githubusercontent.com/emefkaner/podcaster/main/cover-vorlagen/03-hail-mary.jpg`.
-   `media_upload` scheitert: `upload.higgsfield.ai` ist vom Sandkasten gesperrt.
+   **Zwei Vorlagen, zwei Aufgaben — das ist der entscheidende Punkt:**
+   Das **Originalfoto der drei** liefert die Gesichter, `cover-vorlagen/03`
+   liefert **nur** den Zeichenstil. Die alten Cover als Gesichtsquelle zu nehmen
+   ist eine Kopie der Kopie und liefert generische Figuren — daran sind die
+   ersten Versuche gescheitert. Im Auftrag ausdrücklich hinschreiben, welche
+   Referenz wofür gilt.
+
+   Das Foto liegt **nicht** im Repo (`podcaster` ist öffentlich). Der Nutzer
+   schickt es in den Chat; daraus mit
+   `cover-vorlagen/gesichter-ausschneiden.mjs` die drei Gesichter einzeln
+   ausschneiden und per `media_upload` zu Higgsfield laden (Bytes selbst per
+   `curl -X PUT` hochschieben, dann `media_confirm`).
+
+   Repo-Bilder gehen alternativ über `media_import_url` mit der Rohadresse,
+   z. B. `https://raw.githubusercontent.com/emefkaner/podcaster/main/cover-vorlagen/03-hail-mary.jpg`.
 
    **Das fertige Bild immer selbst herunterladen und ansehen** (seit der
    Netzfreigabe möglich) und gegen den Auftrag prüfen, BEVOR es dem Nutzer
