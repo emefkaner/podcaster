@@ -49,6 +49,14 @@ danach, nicht zwischen die Schritte.
   `/opt/pw-browsers/chromium` (`executablePath` mitgeben). `ffmpeg`/`ffprobe`
   gibt es in dieser Umgebung **nicht** — Audio-Wege lassen sich hier also nicht
   durchspielen, nur die Oberfläche.
+- **Testskripte gehören NICHT ins Repo.** Sie landen dort sonst als
+  unversionierte Dateien und der Stop-Hook meckert zu Recht. Damit ein Skript
+  im Kritzelordner `playwright` auflösen kann, einmal einen Verweis anlegen:
+  `ln -sfn /home/user/basic/node_modules <kritzelordner>/node_modules`.
+  Danach laufen Skripte von dort ohne Umweg über das Repo.
+- `ffmpeg.wasm` im kopflosen Chromium ist **zu langsam zum Testen** (31 MB
+  Kern, lief in die Zeitüberschreitung). Oberfläche und Vorhören lassen sich
+  prüfen, das eigentliche Rechnen nicht — das muss der Nutzer melden.
 
 ### Wohin gepusht wird
 
