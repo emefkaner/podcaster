@@ -162,10 +162,19 @@ die öffentliche R2-Adresse zeigen lassen (Achtung: braucht CORS-Regeln am
 Bucket, von hier nicht prüfbar, da `pub-….r2.dev` gesperrt) und lange
 Cache-Header für `vendor/`.
 
-Offene Frage des Nutzers: Warum nicht sein vorhandener Webspace bei
-`www.emefka.com`? Antwort hängt am Tarif — die App braucht einen dauerhaft
-laufenden Node-20-Prozess **plus ffmpeg**; klassischer Webspace (PHP/statisch)
-kann das nicht. Der Nutzer wollte nachsehen, ob sein Paket Node/SSH kann.
+**Webspace-Frage geklärt (07.08.):** `www.emefka.com` liegt bei **Strato,
+klassisches Webspace-Paket** (Screenshot: Menü „Datenbanken und Webspace" mit
+„PHP-Version"; SSH-Zugang vorhanden). Strato-Webspace kann **kein Node.js als
+dauerlaufenden Server** — Strato selbst verkauft Node-Hosting nur als
+V-/Dedicated-Server mit Root. SSH dort heißt nur Dateizugriff und Befehle,
+nicht „eigener Server": Es gibt keinen Weg, die Domain auf einen eigenen
+Prozess zu leiten (Apache/PHP fest verdrahtet). **Umzug dorthin fällt aus;
+nicht wieder aufrollen.** Was der Webspace könnte (statische Dateien
+ausliefern), brauchen wir nicht — Audio liegt schon gratis auf R2.
+
+Erster Sparumbau GEBAUT: `vendor/` (31 MB ffmpeg.wasm) und `assets/` werden
+mit `maxAge: 30d` ausgeliefert. Bei einem ffmpeg-Update deshalb die
+Dateinamen/Pfade ändern, sonst hängen Browser bis 30 Tage auf dem alten Stand.
 
 ## Intro: Cold Open mit Überblendung (seit 08/2026)
 
