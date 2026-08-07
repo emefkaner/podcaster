@@ -64,6 +64,21 @@ function fmtDur(sec) {
 }
 const STATUS_LABEL = { processing: 'Wird verarbeitet', draft: 'Entwurf', published: 'Veröffentlicht', error: 'Fehler' };
 
+// „Geplant" ist kein eigener Status im Datenbestand, sondern eine veröffentlichte
+// Folge, deren Zeitpunkt noch vorn liegt — bis dahin steht sie nicht im Feed.
+// Beide Ansichten müssen das gleich beurteilen, deshalb hier einmal zentral.
+function istGeplant(ep) {
+  return ep.status === 'published' && new Date(ep.publishedAt).getTime() > Date.now();
+}
+
+// Beschriftung und CSS-Klasse für die Status-Plakette.
+function statusPlakette(ep) {
+  if (istGeplant(ep)) {
+    return { klasse: 'geplant', text: 'Geplant', titel: `Erscheint am ${fmtDateTime(ep.publishedAt)}` };
+  }
+  return { klasse: ep.status, text: STATUS_LABEL[ep.status] || ep.status, titel: '' };
+}
+
 // ---------- Routing (sehr simpel) ----------
 // Timer der Verarbeitungs-Anzeige, damit beim Seitenwechsel nichts weiterläuft.
 let procTimer = null;
@@ -481,15 +496,18 @@ function zeichneFolgen() {
 }
 
 function folgeZeile(e) {
-  const geplant = e.status === 'published' && new Date(e.publishedAt).getTime() > Date.now();
+  const p = statusPlakette(e);
+  const geplant = istGeplant(e);
   return `
     <div class="episode" data-id="${e.id}">
       <div style="min-width:0;">
         <h3>${escapeHtml(e.title)}</h3>
-        <div class="meta">${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}</div>
+        <div class="meta">${geplant
+          ? `⏱ ab ${fmtDateTime(e.publishedAt)}`
+          : `${fmtDate(e.publishedAt || e.createdAt)}${e.duration ? ' · ' + fmtDur(e.duration) : ''}`}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex:none;">
-        <span class="badge ${geplant ? 'draft' : e.status}">${geplant ? 'Geplant' : (STATUS_LABEL[e.status] || e.status)}</span>
+        <span class="badge ${p.klasse}" title="${escapeAttr(p.titel)}">${p.text}</span>
         ${e.nummer ? `<span class="epnum" title="Interne Folgennummer">#${e.nummer}</span>` : ''}
       </div>
     </div>`;
@@ -608,11 +626,12 @@ async function renderEpisode(id) {
   const audioUrl = ep.audioUrl || '';
   const isPublished = ep.status === 'published';
   // Eingeplant heißt: veröffentlicht, aber der Zeitpunkt liegt noch vorn.
-  const istGeplant = isPublished && new Date(ep.publishedAt).getTime() > Date.now();
+  const geplant = istGeplant(ep);
+  const plakette = statusPlakette(ep);
   view.innerHTML = `
     <button class="back" onclick="history.back()">← Zurück</button>
     <div class="card">
-      <span class="badge ${ep.status}">${STATUS_LABEL[ep.status]}</span>
+      <span class="badge ${plakette.klasse}" title="${escapeAttr(plakette.titel)}">${plakette.text}</span>
       ${ep.nummer ? `<span class="epnum" title="Interne Folgennummer – erscheint nicht im Feed">#${ep.nummer}</span>` : ''}
       <label for="epTitle">Titel</label>
       <input type="text" id="epTitle" value="${escapeAttr(ep.title)}" />
@@ -710,7 +729,7 @@ async function renderEpisode(id) {
 
     <div class="card">
       <h2 class="section" style="margin-top:0;">1) Eigener RSS-Feed</h2>
-      ${isPublished && istGeplant
+      ${geplant
         ? `<p><span class="badge draft">Geplant</span> Erscheint am <b>${fmtDateTime(ep.publishedAt)}</b>
              und taucht bis dahin nicht im Feed auf.</p>
            <button class="btn danger" id="unpubBtn" style="margin-top:10px;">Planung zurücknehmen</button>`

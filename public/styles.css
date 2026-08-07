@@ -391,6 +391,9 @@ input[type="range"] { accent-color: var(--pink); }
 .badge.processing { background: rgba(251,191,36,.14); color: var(--warn); border-color: rgba(251,191,36,.3); }
 .badge.draft      { background: var(--purple-soft); color: #b794f6; border-color: rgba(124,58,237,.35); }
 .badge.published  { background: var(--pink-soft); color: #ff7ab8; border-color: rgba(255,45,143,.35); }
+/* Geplant: veröffentlicht, aber noch nicht im Feed. Bewusst eine eigene Farbe —
+   als Entwurf gefärbt war nicht zu unterscheiden, ob die Folge schon draußen ist. */
+.badge.geplant    { background: rgba(56,189,248,.14); color: #7dd3fc; border-color: rgba(56,189,248,.35); }
 .badge.error      { background: rgba(255,77,109,.14); color: var(--danger); border-color: rgba(255,77,109,.35); }
 
 /* ---------- Fortschrittsbalken ---------- */
