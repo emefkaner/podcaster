@@ -15,7 +15,7 @@
 //             Die Ausschnitte hier gibt es nur noch für Notfälle.
 //
 // Aufruf:
-//   node cover-vorlagen/gesichter-ausschneiden.mjs <quelle> [zielordner] [foto|cover]
+//   node cover-vorlagen/gesichter-ausschneiden.mjs <quelle> [zielordner] [gruppe|cover]
 //
 // Ohne Angaben: 03-hail-mary.jpg aus diesem Ordner, Aufteilung „cover",
 // Ziel ./gesichter/
@@ -28,7 +28,7 @@ import { chromium } from 'playwright';
 const hier = path.dirname(fileURLToPath(import.meta.url));
 const quelle = process.argv[2] || path.join(hier, '03-hail-mary.jpg');
 const ziel = process.argv[3] || path.join(process.cwd(), 'gesichter');
-const aufteilung = process.argv[4] || (process.argv[2] ? 'foto' : 'cover');
+const aufteilung = process.argv[4] || (process.argv[2] ? 'gruppe' : 'cover');
 
 // Kopf plus Schultern, als Anteil von Breite/Höhe — gilt damit für jede
 // Auflösung derselben Vorlage. Beide Aufteilungen von Hand geprüft.
@@ -39,9 +39,21 @@ const AUFTEILUNGEN = {
     { name: 'maurice',  x: 0.36, y: 0.28, w: 0.30, h: 0.34 },
     { name: 'emefka',   x: 0.62, y: 0.28, w: 0.34, h: 0.34 },
   ],
-  // Selfie vom Kinobesuch (IMG_2691, 4032x3024). Andere Reihenfolge als auf
-  // dem Cover: links Maurice, Mitte emefka, rechts Matthias.
-  foto: [
+  // Gruppenfoto mit ALLEN VIER (Messe, rote Wand mit leuchtender „1",
+  // 4032x3024). Reihenfolge vom Nutzer bestätigt, von links nach rechts:
+  // Andreas, Matthias, Maurice, emefka. Das ist die beste Quelle — hier ist
+  // die Zuordnung belegt statt erschlossen.
+  gruppe: [
+    { name: 'andreas',  x: 0.03, y: 0.16, w: 0.26, h: 0.62 },
+    { name: 'matthias', x: 0.28, y: 0.10, w: 0.20, h: 0.50 },
+    { name: 'maurice',  x: 0.46, y: 0.08, w: 0.24, h: 0.62 },
+    { name: 'emefka',   x: 0.66, y: 0.06, w: 0.30, h: 0.62 },
+  ],
+  // Älteres Selfie vom Kinobesuch (IMG_2691, 4032x3024), nur drei Personen.
+  // ACHTUNG: Diese Namen sind von mir erschlossen und vermutlich FALSCH —
+  // der Abgleich mit dem Gruppenfoto legt nahe, dass links Andreas steht,
+  // nicht Maurice. Nicht verwenden, solange das nicht geklärt ist.
+  'foto-ungeprueft': [
     { name: 'maurice',  x: 0.00, y: 0.13, w: 0.31, h: 0.62 },
     { name: 'emefka',   x: 0.28, y: 0.00, w: 0.37, h: 0.80 },
     { name: 'matthias', x: 0.62, y: 0.13, w: 0.36, h: 0.62 },

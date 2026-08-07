@@ -143,9 +143,16 @@ Folgen-Cover erzeugt. Regeln dafür:
    | `soul_2` (Higgsfield) | läuft, aber **unbrauchbar**: schreibt den Prompt automatisch um und beschreibt dabei nur das Referenzbild — heraus kommt ein Klon der Vorlage. `enhance_prompt: false` wird nicht unterstützt. |
 
    `nsfw` ist Higgsfields Sammelstatus für „vom Filter abgelehnt", ein Grund
-   wird nicht mitgeliefert. Nacktheit kann es nicht sein; vermutlich greift der
-   Ähnlichkeitsschutz für reale Personen, weil die Vorlagen erkennbare
-   Karikaturen sind. Nicht erneut durchprobieren — direkt `flux_2` nehmen.
+   wird nicht mitgeliefert. Nicht erneut durchprobieren — direkt `flux_2` nehmen.
+
+   **Keine geschützten Namen in den Auftrag schreiben.** Am 07.08.2026 belegt:
+   Derselbe Auftrag wurde mit „Star Wars" und „Millennium Falcon" im Text von
+   `flux_2` mit `nsfw` abgelehnt und lief ohne die Namen anstandslos durch.
+   Der Filter greift also auf Marken, **nicht** auf die Gesichter — meine
+   frühere Vermutung (Ähnlichkeitsschutz für reale Personen) war falsch.
+   Motive stattdessen über die Form beschreiben. Haken: Umschreibungen treffen
+   bekannte Fahrzeuge oft nicht; für den Falken lieber ein Referenzbild
+   besorgen, statt ihn ein drittes Mal zu umschreiben.
 
    **Zwei Vorlagen, zwei Aufgaben — das ist der entscheidende Punkt:**
    Das **Originalfoto der drei** liefert die Gesichter, `cover-vorlagen/03`
