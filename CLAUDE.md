@@ -103,7 +103,15 @@ Was geprüft wurde, damit es niemand zweimal prüft:
   `filtermethod` (`studiovoice`), `levelerstrength`. Haken: gratis nur 2 h/Monat
   **mit eingemischtem Jingle**, sonst Credits.
 
-**Gebaut und behalten wurde nur:** `assets/rnnoise.rnn` (Modell
+**Der mitgelieferte ffmpeg.wasm kennt `arnndn`** — geprüft, nicht vermutet:
+`ffmpeg -filters` im kopflosen Chromium listet „arnndn A->A Reduce noise from
+speech using Recurrent Neural Networks". Ein 3-Sekunden-Testton lief damit
+durch `lokalAufbereiten()` und kam als MP3 zurück. RNNoise läuft deshalb auf
+**beiden** Wegen: im Browser (Modell wird über `/assets/rnnoise.rnn` in das
+ffmpeg-Dateisystem geschrieben) und auf dem Server. Das Modell liegt genau
+einmal, unter `public/assets/rnnoise.rnn`.
+
+**Gebaut und behalten wurde nur:** `public/assets/rnnoise.rnn` (Modell
 `beguiling-drafter` aus `GregorR/rnnoise-models`, laut deren README
 ausdrücklich gemeinfrei; passend für Signal „Voice" inkl. Lachen bei
 Aufnahmeraum-Rauschen). `enhanceChain()` in `src/audio.js` schaltet `arnndn`

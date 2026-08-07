@@ -6,7 +6,7 @@ import path from 'node:path';
 import { paths } from '../config.js';
 import { requireAuth } from '../auth.js';
 import { listEpisodes, getEpisode, saveEpisode, deleteEpisode, getSettings } from '../store.js';
-import { buildEpisode, buildEpisodeCopy, probeDuration } from '../audio.js';
+import { buildEpisode, buildEpisodeCopy, probeDuration, bereinigungNoetig } from '../audio.js';
 import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
@@ -96,6 +96,9 @@ router.post('/', uploadFelder, async (req, res) => {
     enhance: {
       enabled: req.body.enhance === 'true' || req.body.enhance === '1',
       strength: zahl(req.body.strength, STANDARD_STAERKE, 0, 100),
+      // RNNoise ist unabhängig zuschaltbar und standardmäßig an: kostet nichts
+      // und trifft Umgebungsgeräusche besser als die klassischen Filter.
+      rnnoise: req.body.rnnoise !== 'false' && req.body.rnnoise !== '0',
     },
     // Lange Sprechpausen automatisch kürzen.
     trimSilence: {
@@ -199,6 +202,7 @@ router.post('/:id/fertig', fertigUpload.single('fertig'), async (req, res) => {
       cur.enhance = {
         enabled: req.body.enhance !== 'false',
         strength: zahl(req.body.strength, STANDARD_STAERKE, 0, 100),
+        rnnoise: req.body.rnnoise === 'true',
       };
     }
     if (req.body?.trimSeconds !== undefined) {
@@ -533,6 +537,7 @@ router.put('/:id', (req, res) => {
     ep.enhance = {
       enabled: Boolean(req.body.enhance.enabled),
       strength: zahl(req.body.enhance.strength, STANDARD_STAERKE, 0, 100),
+      rnnoise: Boolean(req.body.enhance.rnnoise),
     };
     ep.needsRebuild = true;
   }
@@ -722,7 +727,7 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
 
-    const filterNoetig = !ep.lokalBearbeitet && (ep.enhance?.enabled || ep.trimSilence?.enabled);
+    const filterNoetig = !ep.lokalBearbeitet && (bereinigungNoetig(ep.enhance) || ep.trimSilence?.enabled);
 
     let duration, size;
     if (fertigDatei) {

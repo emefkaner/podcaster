@@ -119,11 +119,12 @@ export async function buildEpisodeCopy({ intro, mains, outro, outFile }) {
 }
 
 // Sucht das RNNoise-Modell. Eigene Datei im Datenordner hat Vorrang, sonst die
-// mitgelieferte aus dem Repo.
+// mitgelieferte. Die liegt bewusst unter public/, damit sie DIESELBE Datei ist,
+// die der Browser über /assets/rnnoise.rnn holt – ein Modell, zwei Rechenwege.
 function rnnoiseModell() {
   const kandidaten = [
     path.join(paths.media, 'assets', 'rnnoise.rnn'),
-    path.join(repoWurzel, 'assets', 'rnnoise.rnn'),
+    path.join(repoWurzel, 'public', 'assets', 'rnnoise.rnn'),
   ];
   return kandidaten.find((p) => fs.existsSync(p)) || null;
 }
@@ -149,36 +150,46 @@ function kannArnndn() {
   return arnndnBekannt;
 }
 
-// Baut die Filter-Kette für die KI-/DSP-Sprachoptimierung der Hauptaufnahme.
-// strength: 0..100 (Regler in der App). "Dezent" bei niedrigen Werten,
-// aggressiver bei hohen. Läuft komplett lokal über ffmpeg – kostet nichts.
-function enhanceChain(strength) {
-  const s = Math.min(100, Math.max(0, Number(strength) || 0)) / 100;
+// Baut die Filter-Kette für die Klangbereinigung der Hauptaufnahme.
+//
+// Zwei Dinge, die sich EINZELN zuschalten lassen:
+//   enhance.enabled  – die klassischen Filter, Stärke über enhance.strength
+//   enhance.rnnoise  – RNNoise, ein neuronales Netz gegen Umgebungsgeräusche
+// Beides zusammen ist der Normalfall, aber RNNoise allein ist eine gute Wahl,
+// wenn die klassischen Filter die Stimme schon dumpf machen.
+function enhanceChain(enhance) {
+  const klassisch = Boolean(enhance?.enabled);
+  const rnn = Boolean(enhance?.rnnoise);
+  const s = Math.min(100, Math.max(0, Number(enhance?.strength) || 0)) / 100;
 
   const parts = [];
-  // 1) Tiefes Rumpeln entfernen (Motor, Klimaanlage, Wind).
+  // 1) Tiefes Rumpeln entfernen (Motor, Klimaanlage, Wind). Hilft beiden Wegen.
   parts.push('highpass=f=90');
 
-  // 2) RNNoise: ein echtes neuronales Netz gegen Umgebungsgeräusche. Das Modell
-  //    liegt im Repo unter assets/rnnoise.rnn und wird deshalb normalerweise
-  //    immer gefunden; eine eigene Datei unter data/media/assets/rnnoise.rnn
+  // 2) RNNoise. Das Modell liegt unter public/assets/rnnoise.rnn – dieselbe
+  //    Datei, die der Browser holt. Eine eigene unter data/media/assets/
   //    sticht sie, falls jemand ein anderes Modell ausprobieren will.
-  const rnn = rnnoiseModell();
-  if (rnn && kannArnndn()) {
-    parts.push(`arnndn=m='${rnn.replace(/\\/g, '/')}'`);
+  if (rnn) {
+    const datei = rnnoiseModell();
+    if (datei && kannArnndn()) parts.push(`arnndn=m='${datei.replace(/\\/g, '/')}'`);
+    else console.warn('RNNoise gewünscht, aber Modell oder Filter fehlt – übersprungen.');
   }
 
-  // 3) FFT-Rauschunterdrückung, Stärke skaliert mit dem Regler (ca. 6–28 dB).
-  const nr = (6 + s * 22).toFixed(0);
-  parts.push(`afftdn=nr=${nr}:nf=-25:tn=1`);
-
-  // 4) Zischlaute etwas zähmen und Höhen-Rauschen begrenzen.
-  parts.push('lowpass=f=14000');
-
-  // 5) Lautstärke gleichmäßiger machen (leicht komprimieren).
-  parts.push('acompressor=threshold=-18dB:ratio=3:attack=20:release=250');
+  if (klassisch) {
+    // 3) FFT-Rauschunterdrückung, Stärke skaliert mit dem Regler (ca. 6–28 dB).
+    parts.push(`afftdn=nr=${(6 + s * 22).toFixed(0)}:nf=-25:tn=1`);
+    // 4) Zischlaute etwas zähmen und Höhen-Rauschen begrenzen.
+    parts.push('lowpass=f=14000');
+    // 5) Lautstärke gleichmäßiger machen (leicht komprimieren).
+    parts.push('acompressor=threshold=-18dB:ratio=3:attack=20:release=250');
+  }
 
   return parts.join(',');
+}
+
+// Ist an dieser Folge überhaupt etwas zu bereinigen?
+export function bereinigungNoetig(enhance) {
+  return Boolean(enhance?.enabled || enhance?.rnnoise);
 }
 
 // Kürzt lange Sprechpausen automatisch. Kurze Atempausen bleiben erhalten –
@@ -195,7 +206,7 @@ function silenceChain(seconds) {
 // Baut die vollständige Filterkette für eine Aufnahme.
 function mainChain({ enhance, trimSilence }) {
   const parts = [];
-  if (enhance?.enabled) parts.push(enhanceChain(enhance.strength));
+  if (bereinigungNoetig(enhance)) parts.push(enhanceChain(enhance));
   if (trimSilence?.enabled) parts.push(silenceChain(trimSilence.seconds));
 
   // 6) Auf Podcast-Standard-Lautheit normalisieren (-16 LUFS).

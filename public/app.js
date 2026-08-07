@@ -165,17 +165,23 @@ async function renderHome() {
       <input type="text" id="titleInput" placeholder="z. B. CRIME 101" />
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:16px;">
+        <input type="checkbox" id="rnnChk" checked style="width:auto;" />
+        🧠 KI-Entrauschung (RNNoise)
+      </label>
+      <p class="field-hint">Neuronales Netz gegen Umgebungsgeräusche — eigens auf Stimme
+        <i>inklusive</i> Lachen trainiert. Kostet nichts, läuft ohne fremde Server.</p>
+
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
         <input type="checkbox" id="enhanceChk" checked style="width:auto;" />
-        Klangbereinigung (gegen Hintergrundgeräusche)
+        Klassische Klangbereinigung
       </label>
       <div id="strengthWrap">
         <label for="strength">Stärke: <span id="strengthVal">20</span>%</label>
         <input type="range" id="strength" min="0" max="100" value="20" style="width:100%;" />
         <p class="field-hint">Dezent (links) bis stark (rechts). 20 % ist der Standard und klingt natürlich.
-          Läuft direkt hier bzw. auf dem Server und kostet nichts: ein kleines neuronales Netz (RNNoise)
-          gegen Umgebungsgeräusche, dazu Hochpass, spektrale Rauschunterdrückung, Kompressor und
-          Lautheitsangleich. Aufgedreht nehmen die Filter die Stimme mit — wird es dumpf oder blechern,
-          war es zu stark.</p>
+          Klassische Filter: Hochpass gegen Rumpeln, spektrale Rauschunterdrückung, Kompressor,
+          Lautheitsangleich. Sie schneiden Störgeräusche weg — aufgedreht nehmen sie die Stimme mit.
+          Wird es dumpf oder blechern, war es zu stark.</p>
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
@@ -328,9 +334,13 @@ async function submitEpisode() {
   const files = $('#fileInput').files;
   if (!files.length && !recordedBlob) return;
 
-  const enhance = { enabled: $('#enhanceChk').checked, strength: Number($('#strength').value) };
+  const enhance = {
+    enabled: $('#enhanceChk').checked,
+    strength: Number($('#strength').value),
+    rnnoise: $('#rnnChk').checked,
+  };
   const trimSilence = { enabled: $('#trimChk').checked, seconds: Number($('#trimSec').value) / 10 };
-  const willFilter = enhance.enabled || trimSilence.enabled;
+  const willFilter = enhance.enabled || enhance.rnnoise || trimSilence.enabled;
   const canLocal = $('#lokalChk')?.checked && localAudio && localAudio.lokalMoeglich();
 
   btn.disabled = true;
@@ -412,6 +422,7 @@ async function submitEpisode() {
       for (const datei of quellen) fd.append('audio', datei, datei.name);
       fd.append('enhance', (filterAufServer && enhance.enabled) ? 'true' : 'false');
       fd.append('strength', String(enhance.strength));
+      fd.append('rnnoise', (filterAufServer && enhance.rnnoise) ? 'true' : 'false');
       fd.append('trimSilence', (filterAufServer && trimSilence.enabled) ? 'true' : 'false');
       fd.append('trimSeconds', String(trimSilence.seconds));
     }
@@ -719,12 +730,22 @@ async function renderEpisode(id) {
         </p>
 
         <label style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="reRnn" ${ep.enhance?.rnnoise ? 'checked' : ''} style="width:auto;" />
+          🧠 KI-Entrauschung (RNNoise)
+        </label>
+        <p class="field-hint">Ein neuronales Netz, das gelernt hat, Stimmen von Umgebungsgeräuschen zu
+          trennen. Trifft Lüfter, Straße und Raumrauschen deutlich genauer als der Regler darunter und
+          lässt dabei Lachen stehen — das Modell ist eigens auf Stimme <i>inklusive</i> nicht-sprachlicher
+          Laute trainiert. Kostet nichts und läuft ohne fremde Server.</p>
+
+        <label style="display:flex;align-items:center;gap:10px;margin-top:12px;">
           <input type="checkbox" id="reEnh" ${ep.enhance?.enabled ? 'checked' : ''} style="width:auto;" />
-          Rauschunterdrückung
+          Klassische Rauschunterdrückung
         </label>
         <label for="reStrength">Stärke: <span id="reStrengthVal">${ep.enhance?.strength ?? 20}</span>%</label>
         <input type="range" id="reStrength" min="0" max="100" value="${ep.enhance?.strength ?? 20}" style="width:100%;" />
-        <p class="field-hint">Klingt es dumpf oder blechern, war es zu stark — dann runter auf 20–30 %.</p>
+        <p class="field-hint">Klingt es dumpf oder blechern, war es zu stark — dann runter auf 20–30 %.
+          Lässt sich mit der KI-Entrauschung kombinieren oder ganz weglassen.</p>
 
         <label style="display:flex;align-items:center;gap:10px;margin-top:10px;">
           <input type="checkbox" id="reTrim" ${ep.trimSilence?.enabled ? 'checked' : ''} style="width:auto;" />
@@ -732,7 +753,13 @@ async function renderEpisode(id) {
         </label>
         <input type="range" id="reTrimSec" min="5" max="60" step="5" value="${Math.round((ep.trimSilence?.seconds ?? 2) * 10)}" style="width:100%;" />
 
-        <button class="btn" id="reBtn" style="margin-top:10px;">Neu berechnen</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+          <button class="btn" id="reBtn">Auf diesem Gerät berechnen</button>
+          <button class="btn primary" id="reServerBtn">Auf dem Server berechnen</button>
+        </div>
+        <p class="field-hint">„Auf diesem Gerät" ist schneller, braucht aber einen Rechner.
+          „Auf dem Server" läuft überall — auch am Handy — dauert dafür länger, und du kannst die Seite
+          dabei zumachen.</p>
         <div id="reInfo"></div>
       </div>
 
@@ -1072,8 +1099,9 @@ function warteAufTranskript(id) {
 // bleibt stehen und zeigt weiter den tatsächlichen Stand der Audiodatei.
 function klangStandText(ep) {
   const teile = [];
-  if (ep.enhance?.enabled) teile.push(`${ep.enhance.strength ?? 20} % Rauschunterdrückung`);
-  else teile.push('ohne Rauschunterdrückung');
+  if (ep.enhance?.rnnoise) teile.push('KI-Entrauschung (RNNoise)');
+  if (ep.enhance?.enabled) teile.push(`${ep.enhance.strength ?? 20} % klassische Rauschunterdrückung`);
+  if (!ep.enhance?.rnnoise && !ep.enhance?.enabled) teile.push('ohne Rauschunterdrückung');
 
   if (ep.trimSilence?.enabled) {
     teile.push(`Pausen ab ${(ep.trimSilence.seconds ?? 2).toFixed(1).replace('.', ',')} s gekürzt`);
@@ -1186,6 +1214,22 @@ function wireSpurenMischer(id) {
   });
 }
 
+// Liest die Regler im Kasten „Klang nachjustieren" aus. Beide Knöpfe – Gerät
+// und Server – brauchen genau dieselben Werte, deshalb an einer Stelle.
+function reEinstellungen() {
+  return {
+    enhance: {
+      enabled: $('#reEnh').checked,
+      strength: Number($('#reStrength').value),
+      rnnoise: $('#reRnn').checked,
+    },
+    trimSilence: {
+      enabled: $('#reTrim').checked,
+      seconds: Number($('#reTrimSec').value) / 10,
+    },
+  };
+}
+
 // Klang nachjustieren: Originale holen, im Browser neu bearbeiten, Folge ersetzen.
 function wireNachjustieren(id, ep) {
   const st = $('#reStrength'), tr = $('#reTrimSec'), info = $('#reInfo'), btn = $('#reBtn');
@@ -1196,15 +1240,43 @@ function wireNachjustieren(id, ep) {
     $('#reTrimVal').textContent = (tr.value / 10).toFixed(1).replace('.', ',');
   });
 
+  // Der Server-Weg. Anders als „auf diesem Gerät" läuft er auch am Handy: Es
+  // werden nur die Einstellungen geschickt, gerechnet wird auf Render aus den
+  // Originalaufnahmen. Genau der Weg für alte, ungefilterte Folgen.
+  $('#reServerBtn')?.addEventListener('click', async () => {
+    if (!(ep.parts || []).length) return toast('Keine Originalaufnahmen vorhanden.');
+    const sBtn = $('#reServerBtn');
+    sBtn.disabled = true;
+    sBtn.innerHTML = '<span class="spinner"></span> Wird gestartet …';
+    try {
+      await api(`/api/episodes/${encodeURIComponent(id)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reEinstellungen()),
+      });
+      // Nur das Audio. Transkript und Infotext hängen nicht am Klang und würden
+      // sonst jedes Mal neu erzeugt – das kostet Zeit und Gemini-Kontingent.
+      await api(`/api/episodes/${encodeURIComponent(id)}/build`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ withText: false }),
+      });
+      toast('Server rechnet — der Fortschritt steht oben.');
+      renderEpisode(id);
+    } catch (e) {
+      sBtn.disabled = false;
+      sBtn.textContent = 'Auf dem Server berechnen';
+      info.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+    }
+  });
+
   btn.addEventListener('click', async () => {
     if (!localAudio?.lokalMoeglich()) {
-      return toast('Neu berechnen geht nur auf einem Rechner, nicht am Handy.', 4500);
+      return toast('„Auf diesem Gerät" geht nur auf einem Rechner. Am Handy den Server-Knopf nehmen.', 5000);
     }
     const teile = ep.parts || [];
     if (!teile.length) return toast('Keine Originalaufnahmen vorhanden.');
 
-    const enhance = { enabled: $('#reEnh').checked, strength: Number(st.value) };
-    const trimSilence = { enabled: $('#reTrim').checked, seconds: Number(tr.value) / 10 };
+    const enhance = reEinstellungen().enhance;
+    const trimSilence = reEinstellungen().trimSilence;
 
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Rechnet …';
     info.innerHTML = `<div class="progress" style="margin-top:10px;"><div class="progress-fill" id="reFill"></div></div>
@@ -1243,6 +1315,7 @@ function wireNachjustieren(id, ep) {
       fd.append('fertig', folge, 'folge.mp3');
       fd.append('enhance', String(enhance.enabled));
       fd.append('strength', String(enhance.strength));
+      fd.append('rnnoise', String(enhance.rnnoise));
       fd.append('trimSilence', String(trimSilence.enabled));
       fd.append('trimSeconds', String(trimSilence.seconds));
       await uploadMitFortschritt(`/api/episodes/${encodeURIComponent(id)}/fertig`, fd,

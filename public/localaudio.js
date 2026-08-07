@@ -86,13 +86,39 @@ async function ffmpegHolen(onStatus) {
   }
 }
 
+// Name des RNNoise-Modells INNERHALB des ffmpeg-Dateisystems. Die Datei wird
+// vorher aus /assets/rnnoise.rnn geholt und dort abgelegt.
+const RNN_DATEI = 'rnnoise.rnn';
+const RNN_URL = '/assets/rnnoise.rnn';
+let rnnGeladen = false;
+
+// Das Modell einmal in das ffmpeg-Dateisystem legen. Geprüft: der mitgelieferte
+// Kern kennt den Filter arnndn („Reduce noise from speech using Recurrent
+// Neural Networks"), das Netz läuft also auch im Browser.
+async function rnnoiseBereitstellen(ffmpeg, onStatus) {
+  if (rnnGeladen) return true;
+  onStatus?.('KI-Entrauschung wird vorbereitet (300 KB) …', null);
+  const res = await fetch(RNN_URL, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`RNNoise-Modell nicht abrufbar (HTTP ${res.status}).`);
+  const daten = new Uint8Array(await res.arrayBuffer());
+  if (!daten.length) throw new Error('RNNoise-Modell kam leer zurück.');
+  await ffmpeg.writeFile(RNN_DATEI, daten);
+  rnnGeladen = true;
+  return true;
+}
+
 // Dieselbe Filterkette wie auf dem Server – hier nur lokal gerechnet.
+// Klassische Filter und RNNoise sind einzeln zuschaltbar.
 function filterKette({ enhance, trimSilence }) {
   const teile = [];
+  const klassisch = Boolean(enhance?.enabled);
+  const rnn = Boolean(enhance?.rnnoise);
 
-  if (enhance?.enabled) {
+  if (klassisch || rnn) teile.push('highpass=f=90');
+  if (rnn) teile.push(`arnndn=m=${RNN_DATEI}`);
+
+  if (klassisch) {
     const s = Math.min(100, Math.max(0, enhance.strength)) / 100;
-    teile.push('highpass=f=90');
     teile.push(`afftdn=nr=${(6 + s * 22).toFixed(0)}:nf=-25:tn=1`);
     teile.push('lowpass=f=14000');
     teile.push('acompressor=threshold=-18dB:ratio=3:attack=20:release=250');
@@ -191,6 +217,7 @@ function endung(url) {
  */
 export async function lokalAufbereiten(datei, einstellungen, onStatus) {
   const ffmpeg = await ffmpegHolen(onStatus);
+  if (einstellungen?.enhance?.rnnoise) await rnnoiseBereitstellen(ffmpeg, onStatus);
 
   const eingang = 'eingang' + (datei.name?.match(/\.[a-z0-9]+$/i)?.[0] || '.webm');
   const ausgang = 'ausgang.mp3';

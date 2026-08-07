@@ -98,6 +98,15 @@ try {
   pruefe('Transkript-Knopf vorhanden', (await page.locator('#sttBtn').count()) === 1);
   pruefe('Cover-Generator ist entfernt', !folgentext.includes('Cover generieren'));
   pruefe('Bild von Adresse übernehmen vorhanden', (await page.locator('#epImageUrlBtn').count()) === 1);
+  pruefe('RNNoise-Schalter im Nachjustieren-Kasten', (await page.locator('#reRnn').count()) === 1);
+  pruefe('Server-Knopf zum Neuberechnen vorhanden', (await page.locator('#reServerBtn').count()) === 1);
+
+  // Das Modell muss ausgeliefert werden, sonst kann der Browser arnndn nicht
+  // benutzen – und der Fehler fiele erst mitten in einer langen Bearbeitung auf.
+  const modell = await page.request.get(`${BASE}/assets/rnnoise.rnn`);
+  const modellBytes = modell.ok() ? (await modell.body()).length : 0;
+  pruefe('RNNoise-Modell wird ausgeliefert', modell.ok() && modellBytes > 100000,
+    `HTTP ${modell.status()}, ${modellBytes} Bytes`);
 
   // Speichern muss durchgehen.
   await page.fill('#epTitle', 'Rauchtest-Folge (geändert)');
