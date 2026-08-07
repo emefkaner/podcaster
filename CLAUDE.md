@@ -122,10 +122,12 @@ Schreibt der Nutzer im Chat `COVER: <was anders sein soll>`, wird ein
 Folgen-Cover erzeugt. Regeln dafür:
 
 0. **Erst klären, wer drauf ist.** Standard sind die **drei** aus
-   `cover-vorlagen/03` und `04`. **Andreas** ist nur manchmal dabei — dann sind
-   es vier, seine Vorlage ist `cover-vorlagen/01`. **Gastpodcaster** kommen
-   öfter vor; für die gibt es keine Vorlage, also **vorher ein Bild der Person
-   erfragen**. Niemals eine Figur dazuerfinden.
+   `cover-vorlagen/03` und `04`. Es kann aber jemand fehlen oder dazukommen —
+   nicht ungefragt alle drei nehmen. **Andreas** ist nur manchmal dabei; von ihm
+   gibt es ein **Foto**, das sich der Nutzer als Datei anhängen lässt (Details in
+   `cover-vorlagen/README.md`). Sein Ausschnitt aus `01` ist nur der Notnagel.
+   **Gastpodcaster** kommen öfter vor; für die gibt es keine Vorlage, also
+   **vorher ein Bild der Person erfragen**. Niemals eine Figur dazuerfinden.
 1. **Immer nur ein Bild auf einmal.** Kein Stapel, keine Varianten parallel.
 2. **Modell: `flux_2` (variant `pro`, 1k).** Kostet genau 1 Credit und ist das
    einzige geprüfte Modell, das beides kann. Vor dem Erzeugen immer mit

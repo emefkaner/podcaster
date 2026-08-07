@@ -24,7 +24,15 @@ als 2048er PNG mit 9 MB vor, was für Referenzbilder unnötig ist.
 **Andreas — nur manchmal.** Die verbleibende Figur auf `01`: **2. von links**,
 schmaler, rotbraunes Haar, leichter Bart. Er ist der Einzige, der auf `03` und
 `04` fehlt. Ist er in einer Folge dabei, sagt der Nutzer das ausdrücklich; dann
-gehören **vier** Figuren aufs Cover, sonst drei. Vorlage für sein Gesicht: `01`.
+gehört er mit aufs Cover — mal zu dritt, mal zu viert.
+
+**Von Andreas gibt es ein Foto** (Porträtaufnahme: dunkles, welliges Haar,
+kräftiger Vollbart, freundliches Lächeln, schwarzes Polohemd vor blauem
+Hintergrund). Der Nutzer hat es am 07.08.2026 im Chat gezeigt. **Es als Datei
+anhängen lassen** und als Gesichts-Vorlage nehmen — nicht den Ausschnitt aus
+`01`. Der ist eine Zeichnung nach einem Foto und nur 440 Pixel groß; damit
+gerät sein Gesicht deutlich ungenauer als das der anderen. Wie bei den drei
+anderen liegt auch sein Foto bewusst nicht im Repo.
 
 **Gastpodcaster — kommen öfter vor.** Der Nutzer kündigt sie an. Für einen Gast
 gibt es **keine Vorlage** — ohne Bild erfindet das Modell ein Gesicht. Deshalb:
