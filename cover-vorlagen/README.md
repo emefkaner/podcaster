@@ -13,26 +13,36 @@ als 2048er PNG mit 9 MB vor, was für Referenzbilder unnötig ist.
 
 ## Wer aufs Cover gehört
 
-**Die Stammbesetzung — drei Personen** (vom Nutzer selbst zugeordnet):
+**Alle vier**, vom Nutzer am 07.08.2026 anhand eines Gruppenfotos zugeordnet
+(Messe-Selfie, rote Wand mit leuchtender „1", vier Personen in Anzügen).
+Reihenfolge auf diesem Foto von links nach rechts:
 
-| Wer | Woran erkennbar | Auf `01` | Auf `03` / `04` |
+| Wer | Woran erkennbar (Foto) | Auf `01` | Auf `03` / `04` |
 |---|---|---|---|
-| **Matthias** | hellblond, breites Zahn-Lächeln, glatt rasiert | 1. von links | links |
-| **Maurice** | kräftiger, dunkelblond, Bärtchen | 3. von links | Mitte |
-| **emefka** | dunkles Haar, schwarze Brille, Kinnbart, skeptischer Blick | 4. von links | rechts |
+| **Andreas** | dunkle Locken, kräftiger Vollbart, rundes Gesicht, breites Lachen | 2. von links | — |
+| **Matthias** | hellblond, kurz, breites Zahn-Lächeln | 1. von links | links |
+| **Maurice** | langes welliges braunes Haar, Vollbart, ruhiges Lächeln | 3. von links | Mitte |
+| **emefka** | dunkle Locken, **randlose bis dünne Brille**, Vollbart | 4. von links | rechts |
+
+**Achtung — die Reihenfolge auf dem Gruppenfoto ist eine andere als auf den
+Covern.** Wer welches Gesicht bekommt, immer über die Beschreibung zuordnen,
+nicht über die Position.
 
 **Andreas — nur manchmal.** Die verbleibende Figur auf `01`: **2. von links**,
 schmaler, rotbraunes Haar, leichter Bart. Er ist der Einzige, der auf `03` und
 `04` fehlt. Ist er in einer Folge dabei, sagt der Nutzer das ausdrücklich; dann
 gehört er mit aufs Cover — mal zu dritt, mal zu viert.
 
-**Von Andreas gibt es ein Foto** (Porträtaufnahme: dunkles, welliges Haar,
-kräftiger Vollbart, freundliches Lächeln, schwarzes Polohemd vor blauem
-Hintergrund). Der Nutzer hat es am 07.08.2026 im Chat gezeigt. **Es als Datei
-anhängen lassen** und als Gesichts-Vorlage nehmen — nicht den Ausschnitt aus
-`01`. Der ist eine Zeichnung nach einem Foto und nur 440 Pixel groß; damit
-gerät sein Gesicht deutlich ungenauer als das der anderen. Wie bei den drei
-anderen liegt auch sein Foto bewusst nicht im Repo.
+**Von Andreas gibt es Fotos** — ein Porträt (dunkles welliges Haar, kräftiger
+Vollbart, schwarzes Polohemd vor blauem Hintergrund) und das Gruppenfoto oben.
+Beide als Gesichts-Vorlage nehmen, **nicht** den Ausschnitt aus `01`: Der ist
+eine Zeichnung nach einem Foto und nur 440 Pixel groß, sein Gesicht gerät damit
+deutlich ungenauer als das der anderen.
+
+**Wichtig zur Übergabe:** Eingefügte Bilder erreichen den Chat, aber **nicht das
+Dateisystem** — sie lassen sich weder zuschneiden noch hochladen. Fotos müssen
+als **Dateianhang** kommen (so wie `IMG_2691` am 06.08.). Erst dann sind sie
+verwendbar. Im Repo liegen sie bewusst nicht, `podcaster` ist öffentlich.
 
 **Gastpodcaster — kommen öfter vor.** Der Nutzer kündigt sie an. Für einen Gast
 gibt es **keine Vorlage** — ohne Bild erfindet das Modell ein Gesicht. Deshalb:
