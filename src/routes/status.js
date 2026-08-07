@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { getSettings, listEpisodes } from '../store.js';
 import { storageEnabled } from '../storage.js';
 import { geminiModellName } from '../gemini.js';
+import { istEingeplant, feedDatum } from '../rss.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -73,6 +74,33 @@ function pruefeFolgen(eps) {
     mitFolgenbild: eps.filter((e) => e.imageUrl).length,
     ohneText: eps.filter((e) => !e.description?.trim()).length,
     gesamtgroesseMB: Math.round(eps.reduce((sum, e) => sum + (e.size || 0), 0) / 1048576),
+    ...feedPruefung(eps),
+  };
+}
+
+// Steht im Feed wirklich das, was die App anzeigt?
+//
+// Eine Folge kann als „Veröffentlicht" dastehen und trotzdem in keiner
+// Podcast-App auftauchen — etwa wenn ihr Datum fehlt oder unlesbar ist. Das
+// fiel früher niemandem auf, weil beide Seiten unabhängig voneinander
+// rechneten. Deshalb wird es jetzt ausdrücklich nachgezählt und benannt.
+function feedPruefung(eps) {
+  const veroeffentlicht = eps.filter((e) => e.status === 'published');
+  const imFeed = veroeffentlicht.filter((e) => !istEingeplant(e));
+
+  const datumRepariert = imFeed.filter((e) => {
+    const d = new Date(e.publishedAt);
+    return !e.publishedAt || isNaN(d.getTime());
+  });
+  const ohneAudioImFeed = imFeed.filter((e) => !e.audioUrl);
+
+  return {
+    folgenImFeed: imFeed.length,
+    davonEingeplant: veroeffentlicht.length - imFeed.length,
+    // Diese Folgen stehen im Feed, aber mit ersatzweise ermitteltem Datum.
+    mitErsatzdatum: datumRepariert.map((e) => `${e.title} → ${feedDatum(e).toISOString().slice(0, 10)}`),
+    // Das wäre ein echter Defekt: im Feed, aber ohne abspielbare Datei.
+    imFeedOhneAudio: ohneAudioImFeed.map((e) => e.title),
   };
 }
 

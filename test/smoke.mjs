@@ -128,6 +128,25 @@ try {
   const feedText = await feed.text();
   pruefe('Feed antwortet mit XML', feed.ok && feedText.startsWith('<?xml'));
 
+  // Eine veröffentlichte Folge darf NIE wegen eines fehlenden oder unlesbaren
+  // Datums aus dem Feed fallen — genau daran lag es, dass eine Folge in der App
+  // als „Veröffentlicht" stand und in der Podcast-App fehlte.
+  const { buildFeed } = await import('../src/rss.js');
+  const { saveEpisode } = await import('../src/store.js');
+  for (const [id, datum] of [['kaputt1', null], ['kaputt2', 'irgendwas'], ['kaputt3', '']]) {
+    saveEpisode({
+      id, title: `Datumstest ${id}`, description: '', status: 'published',
+      audioUrl: 'https://example.invalid/x.mp3', audioKey: 'k', duration: 60, size: 1,
+      createdAt: '2026-05-05T10:00:00.000Z', publishedAt: datum, parts: [],
+    });
+  }
+  const xml = buildFeed();
+  const drin = ['kaputt1', 'kaputt2', 'kaputt3'].filter((id) => xml.includes(`Datumstest ${id}`));
+  pruefe('Kaputtes Datum wirft die Folge nicht aus dem Feed', drin.length === 3,
+    `im Feed: ${drin.join(', ') || 'keine'}`);
+  pruefe('Kein Ersatzdatum landet im Jahr 1970', !xml.includes('1970'),
+    'Ohne Datum wurde früher der 1.1.1970 gesetzt — die Folge stand dann ganz unten.');
+
   pruefe('Keine JavaScript-Fehler im Browser', jsFehler.length === 0, jsFehler.join(' | '));
 } catch (err) {
   pruefe('Durchlauf ohne Absturz', false, err.message);

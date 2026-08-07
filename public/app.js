@@ -67,8 +67,14 @@ const STATUS_LABEL = { processing: 'Wird verarbeitet', draft: 'Entwurf', publish
 // „Geplant" ist kein eigener Status im Datenbestand, sondern eine veröffentlichte
 // Folge, deren Zeitpunkt noch vorn liegt — bis dahin steht sie nicht im Feed.
 // Beide Ansichten müssen das gleich beurteilen, deshalb hier einmal zentral.
+// Muss zu istEingeplant() in src/rss.js passen: Nur ein LESBARES Datum in der
+// Zukunft heißt „geplant". Bei einem unlesbaren Datum ergäbe der Vergleich NaN
+// und damit false — die Folge stünde hier als „Veröffentlicht", wäre aber
+// früher aus dem Feed gefallen. Genau diese Lücke gab es.
 function istGeplant(ep) {
-  return ep.status === 'published' && new Date(ep.publishedAt).getTime() > Date.now();
+  if (ep.status !== 'published' || !ep.publishedAt) return false;
+  const t = new Date(ep.publishedAt).getTime();
+  return !isNaN(t) && t > Date.now();
 }
 
 // Beschriftung und CSS-Klasse für die Status-Plakette.
@@ -1076,6 +1082,37 @@ function klangStandText(ep) {
   return `${teile.join(', ')}${wann}`;
 }
 
+// Holt eine Originalaufnahme für die erneute Bearbeitung.
+//
+// Bevorzugt direkt beim Speicher (R2). Das ist nicht bloß schneller: Jede
+// Datei, die stattdessen durch die App läuft, zählt bei Render als ausgehende
+// Bandbreite – und davon gibt es nur 5 GB im Monat. Bei einer zweistündigen
+// Folge sind das je Versuch ein paar hundert MB.
+//
+// Der Direktweg braucht eine CORS-Regel am Bucket. Fehlt sie, wehrt der
+// Browser die Anfrage ab; dann wird still über die App geholt wie bisher.
+// Deshalb ist hier kein Schalter nötig — es findet sich von allein.
+async function teilHolen(id, teil, melde) {
+  const basis = `/api/episodes/${encodeURIComponent(id)}/parts/${encodeURIComponent(teil.id)}`;
+
+  try {
+    const quelle = await api(`${basis}/quelle`);
+    if (quelle?.direkt && quelle.url) {
+      const r = await fetch(quelle.url, { mode: 'cors' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.blob();
+    }
+  } catch (e) {
+    // Kein Beinbruch – nur teurer. Für die Fehlersuche festhalten.
+    console.warn('Direkt vom Speicher ging nicht, gehe über die App:', e.message);
+    melde?.('Direktweg gesperrt, wird über die App geholt …');
+  }
+
+  const r = await fetch(`${basis}/file`, { credentials: 'same-origin' });
+  if (!r.ok) throw new Error(`Aufnahme nicht abrufbar (HTTP ${r.status}).`);
+  return await r.blob();
+}
+
 // Liest die Regler im Kasten „Klang nachjustieren" aus. Beide Knöpfe – Gerät
 // und Server – brauchen genau dieselben Werte, deshalb an einer Stelle.
 function reEinstellungen() {
@@ -1152,14 +1189,13 @@ function wireNachjustieren(id, ep) {
     arbeitetGerade = true;
 
     try {
-      // Originale über die App holen (aus dem Speicher direkt darf der Browser nicht).
+      // Originale holen – wenn möglich direkt beim Speicher, sonst über die App.
       const originale = [];
       for (let i = 0; i < teile.length; i++) {
         setz(null, `Original ${i + 1} von ${teile.length} wird geholt …`);
-        const r = await fetch(`/api/episodes/${encodeURIComponent(id)}/parts/${encodeURIComponent(teile[i].id)}/file`,
-          { credentials: 'same-origin' });
-        if (!r.ok) throw new Error(`Aufnahme ${i + 1} nicht abrufbar (HTTP ${r.status}).`);
-        originale.push(new File([await r.blob()], teile[i].name || `teil${i}.mp3`));
+        const blob = await teilHolen(id, teile[i],
+          (text) => setz(null, `Original ${i + 1} von ${teile.length}: ${text}`));
+        originale.push(new File([blob], teile[i].name || `teil${i}.mp3`));
       }
 
       const bearbeitet = [];
@@ -1608,6 +1644,9 @@ async function loadStatus() {
           ${p.ohneAudio ? `<div class="error">⚠️ ${p.ohneAudio} Folge(n) ohne Audiodatei</div>` : ''}
           <div>🖼️ Mit eigenem Folgenbild: <b>${p.mitFolgenbild}</b></div>
           ${p.ohneText ? `<div class="error">⚠️ ${p.ohneText} Folge(n) ohne Text</div>` : '<div>✍️ Alle Folgen haben einen Text</div>'}
+          <div style="margin-top:6px;">📡 Im RSS-Feed: <b>${p.folgenImFeed}</b>${p.davonEingeplant ? ` <span class="muted">(${p.davonEingeplant} noch eingeplant)</span>` : ''}</div>
+          ${p.imFeedOhneAudio?.length ? `<div class="error">⚠️ Im Feed, aber ohne Audiodatei: ${escapeHtml(p.imFeedOhneAudio.join(', '))}</div>` : ''}
+          ${p.mitErsatzdatum?.length ? `<div class="muted">🗓️ Ersatzdatum verwendet (eigenes Datum fehlte oder war unlesbar): ${escapeHtml(p.mitErsatzdatum.join(' · '))}</div>` : ''}
           <div class="muted" style="font-size:.82rem;">Belegter Speicher: ca. ${p.gesamtgroesseMB} MB von 10 000 MB</div>
         </div>` : ''}
       </div>`;

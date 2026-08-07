@@ -9,7 +9,7 @@ import { listEpisodes, getEpisode, saveEpisode, deleteEpisode, getSettings } fro
 import { buildEpisode, buildEpisodeCopy, probeDuration, bereinigungNoetig } from '../audio.js';
 import { transcribeAll } from '../transcribe.js';
 import { generateDescription } from '../describe.js';
-import { uploadFile, downloadToFile, deleteKey } from '../storage.js';
+import { uploadFile, downloadToFile, deleteKey, storageEnabled, publicUrl } from '../storage.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
 import { generatePeaks, cutRegions } from '../waveform.js';
@@ -147,8 +147,30 @@ router.post('/:id/parts', upload.array('audio', 12), async (req, res) => {
   }
 });
 
-// Einen Aufnahme-Teil über die App ausliefern. Nötig, damit der Browser die
-// Originale erneut bearbeiten kann – aus dem Speicher direkt darf er nicht.
+// Woher der Browser einen Aufnahme-Teil holen soll.
+//
+// Der Umweg über die App kostet bare Münze: Jede Originalaufnahme, die für
+// „Klang nachjustieren" geladen wird, zählt als ausgehende Bandbreite – bei
+// einer zweistündigen Folge ein paar hundert MB je Versuch. Liegt die Datei
+// in R2 und ist der Bucket öffentlich, kann der Browser sie direkt dort holen;
+// dann fließt gar nichts durch die App.
+//
+// Ob das klappt, hängt an einer CORS-Regel am Bucket, die von hier nicht
+// prüfbar ist. Deshalb nur ein Vorschlag – der Browser fällt bei Ablehnung
+// selbsttätig auf /file zurück.
+router.get('/:id/parts/:partId/quelle', (req, res) => {
+  const ep = getEpisode(req.params.id);
+  if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
+  const part = (ep.parts || []).find((p) => p.id === req.params.partId);
+  if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
+
+  const ueberDieApp = `/api/episodes/${encodeURIComponent(ep.id)}/parts/${encodeURIComponent(part.id)}/file`;
+  if (!storageEnabled()) return res.json({ url: ueberDieApp, direkt: false });
+  res.json({ url: publicUrl(part.key), direkt: true, ersatz: ueberDieApp });
+});
+
+// Einen Aufnahme-Teil über die App ausliefern. Rückfallweg, wenn der Browser
+// nicht direkt an den Speicher darf.
 router.get('/:id/parts/:partId/file', async (req, res) => {
   const ep = getEpisode(req.params.id);
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });

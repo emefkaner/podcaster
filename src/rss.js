@@ -13,6 +13,31 @@ function esc(str = '') {
     .replace(/'/g, '&apos;');
 }
 
+// Das Datum, mit dem eine Folge im Feed steht.
+//
+// Hier lauerten zwei Fehler, die beide dazu führten, dass eine Folge in der
+// App als „Veröffentlicht" dastand, in der Podcast-App aber nicht auftauchte:
+//   1. Ein unlesbares Datum ergab NaN. Der Vergleich `NaN <= jetzt` ist false,
+//      also fiel die Folge stillschweigend aus dem Feed.
+//   2. Fehlte das Datum ganz, machte `new Date(null)` daraus den 1.1.1970 —
+//      die Folge stand zwar im Feed, aber ganz unten, Jahrzehnte hinter allen
+//      anderen. In der Podcast-App sieht das aus wie „nicht da".
+// Deshalb: nur ein wirklich lesbares Datum zählt, sonst das Anlagedatum, sonst
+// jetzt. Eine veröffentlichte Folge verschwindet nie wegen eines Datums.
+export function feedDatum(e) {
+  for (const wert of [e.publishedAt, e.createdAt]) {
+    const d = new Date(wert);
+    if (wert && !isNaN(d.getTime())) return d;
+  }
+  return new Date();
+}
+
+// Erst ab dem Termin in den Feed – aber nur, wenn der Termin auch lesbar ist.
+export function istEingeplant(e, jetzt = Date.now()) {
+  const d = new Date(e.publishedAt);
+  return Boolean(e.publishedAt) && !isNaN(d.getTime()) && d.getTime() > jetzt;
+}
+
 // Baut einen Podcast-RSS-Feed 2.0 inkl. iTunes-Tags.
 // Genau dieses Format erwartet Spotify for Podcasters beim einmaligen Eintragen.
 export function buildFeed() {
@@ -22,15 +47,15 @@ export function buildFeed() {
   // Folgen bleibt der Feed unverändert, bis der Termin da ist.
   const jetzt = Date.now();
   const published = listEpisodes()
-    .filter((e) => e.status === 'published' && new Date(e.publishedAt).getTime() <= jetzt)
-    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    .filter((e) => e.status === 'published' && !istEingeplant(e, jetzt))
+    .sort((a, b) => feedDatum(b) - feedDatum(a));
 
   const coverUrl = s.cover ? publicUrl(`assets/${s.cover}`) : '';
 
   const items = published
     .map((e) => {
       const audioUrl = e.audioUrl || '';
-      const pubDate = new Date(e.publishedAt).toUTCString();
+      const pubDate = feedDatum(e).toUTCString();
       // Beim Import behalten wir die Original-GUID, damit Spotify/Apple die Folge
       // als dieselbe wiedererkennen und keine Dubletten anlegen.
       const guid = e.importGuid || e.id;
