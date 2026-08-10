@@ -11,6 +11,35 @@ als 2048er PNG mit 9 MB vor, was für Referenzbilder unnötig ist.
 | `03-hail-mary.jpg` | „HAIL MARY" mit Unterzeile „EASY ON THE SPACE SUITS". Die drei in Raumanzügen. |
 | `04-crime-101.jpg` | „CRIME 101". Die drei im Überwachungswagen, Regennacht. |
 
+## Die Higgsfield-Kennungen — HIER nachschlagen, nicht raten
+
+**Der Grund für diese Tabelle:** Die Medienliste bei Higgsfield liefert keine
+Dateinamen, nur Kennungen. Ohne Notiz wurde die Zuordnung jedes Mal neu
+erschlossen — und genau dabei landete am 10.08. Andreas' Gesicht auf einem
+Cover, auf dem emefka stehen sollte. Vom Nutzer bestätigt, nicht geschlossen:
+
+| Wer | Kennung | Was für ein Bild |
+|---|---|---|
+| **emefka** | `e3797ef0-fbcc-48c1-968e-bccf2c1fc27a` | **beste Vorlage** – Studioporträt, Brille, blaues Jeanshemd |
+| emefka | `81bb2c2d-d5bc-4e3e-961e-0e08170bc8db` | Gruppenfoto rote Wand, Brille |
+| emefka | `8b2a8939-5281-4eb1-87a5-a45148854743` | Kinoselfie, ohne Brille |
+| **Matthias** | `49d21d46-3f3a-4a4f-90c2-cfd2b3f649bd` | Kinoselfie, blond, Zahn-Lächeln |
+| **Maurice** | `6c9504e4-8412-4244-aa9d-430ca064f844` | Gruppenfoto rote Wand |
+| Maurice | `9402a1da-cd6f-4f75-b4b6-67776f634f8a` | Kinoselfie, olivfarbenes Shirt |
+| **Andreas** | `f6c3ca7b-101a-4816-bd68-5590f53cd5ba` | Gruppenfoto, breites Lachen – **schlechter Ausschnitt** |
+| Stil-Vorlage | `cc52c0b7-f3da-4edb-8bda-97d90f45b969` | `03-hail-mary.jpg`, NUR für den Zeichenstil |
+
+**Kaputt, nicht benutzen:** `16b1bfa8-…` und `9b120b0a-…` (die beiden
+Andreas-Porträts). CloudFront antwortet mit `AccessDenied`, die Erzeugung
+bricht mit HTTP 500 ab. Von Andreas fehlt damit eine brauchbare Vorlage.
+
+## Anzüge/Kleidung immer ans AUSSEHEN koppeln, nie an die Position
+
+Am 10.08. belegt: „von links nach rechts: 1) … 2) …" hält `flux_2` **nicht**
+ein — der pinke Anzug landete bei Maurice statt bei Matthias. Mit „DER MANN MIT
+DEM BLONDEN HAAR trägt den pinken Anzug" saß es auf Anhieb. Also immer über ein
+eindeutiges Merkmal zuweisen (blond, Brille, Vollbart), nicht über den Platz.
+
 ## Wer aufs Cover gehört
 
 **Alle vier**, vom Nutzer am 07.08.2026 anhand eines Gruppenfotos zugeordnet
