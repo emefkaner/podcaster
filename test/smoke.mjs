@@ -155,6 +155,23 @@ try {
   }
   pruefe('Neues Cover bekommt einen neuen Dateinamen', namen[0] !== namen[1],
     namen.join(' -> '));
+
+  // Gäste gehören zu EINER Folge. Sie müssen im Auftrag an die KI auftauchen,
+  // die Satzzahl erhöhen und als Gast kenntlich sein – ohne die Stammbesetzung
+  // in den Einstellungen anzufassen.
+  const { buildPrompt, DEFAULT_CREW } = await import('../src/describe.js');
+  const basis = { title: 'X', podcast: 'Cinespasten', mitTranskript: false, hinweise: '', transcript: '' };
+  const ohneGast = buildPrompt({ ...basis, crew: DEFAULT_CREW });
+  const mitGast = buildPrompt({
+    ...basis,
+    crew: `${DEFAULT_CREW}\nTina: Gast.`,
+    gaeste: 'Tina: Gast.',
+  });
+  pruefe('Gast erhöht die Satzzahl und wird als Gast benannt',
+    /genau 5 Sätze/.test(ohneGast) && /genau 6 Sätze/.test(mitGast)
+      && /ZU GAST/.test(mitGast) && !/ZU GAST/.test(ohneGast)
+      && (mitGast.match(/Tina:/g) || []).length === 1,
+    `ohne: ${(ohneGast.match(/genau \d+ Sätze/) || [])[0]} · mit: ${(mitGast.match(/genau \d+ Sätze/) || [])[0]}`);
   pruefe('Cover-Generator-Karte ist entfernt', !einstellungen.includes('Cover-Generator'));
 
   // ---- Feed ----

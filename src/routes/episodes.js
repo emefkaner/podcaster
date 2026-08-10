@@ -462,7 +462,9 @@ async function transkriptNachholen(id) {
     melde({ phase: 'Infotext wird geschrieben', teil: gesamt, gesamt });
     let vorschlag = '', textFehler = '';
     try {
-      vorschlag = await generateDescription({ transcript: text, title: getEpisode(id).title });
+      vorschlag = await generateDescription({
+        transcript: text, title: getEpisode(id).title, gaeste: getEpisode(id).gaeste || '',
+      });
     } catch (err) {
       textFehler = err.message;
     }
@@ -491,6 +493,12 @@ router.post('/:id/describe', async (req, res) => {
   if (!ep) return res.status(404).json({ error: 'Nicht gefunden' });
 
   const hinweise = (req.body?.hinweise || '').trim();
+  // Gäste kommen mit der Anfrage und werden an der Folge gemerkt, damit sie
+  // beim nächsten „↻ Text" nicht erneut eingetippt werden müssen.
+  if (typeof req.body?.gaeste === 'string') {
+    ep.gaeste = req.body.gaeste.trim();
+    saveEpisode(ep);
+  }
 
   // Ohne Transkript und ohne Stichworte wird der Film anhand des Titels
   // recherchiert – dafür braucht es lediglich einen Titel.
@@ -501,7 +509,9 @@ router.post('/:id/describe', async (req, res) => {
   }
 
   try {
-    const text = await generateDescription({ transcript: ep.transcript, title: ep.title, hinweise });
+    const text = await generateDescription({
+      transcript: ep.transcript, title: ep.title, hinweise, gaeste: ep.gaeste || '',
+    });
     const cur = getEpisode(ep.id);
     cur.descriptionSuggestion = text;
     saveEpisode(cur);
@@ -807,7 +817,9 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
       // Grund wird notiert und in der App angezeigt.
       let description = '', textFehler = '';
       try {
-        description = await generateDescription({ transcript, title: getEpisode(id).title });
+        description = await generateDescription({
+          transcript, title: getEpisode(id).title, gaeste: getEpisode(id).gaeste || '',
+        });
       } catch (err) {
         console.error('Infotext fehlgeschlagen:', err.message);
         textFehler = err.message;

@@ -691,6 +691,13 @@ async function renderEpisode(id) {
           anhand des Titels und schreibt daraus. Optional kannst du Stichworte mitgeben:</p>
         <input type="text" id="descHints" placeholder="optional: z. B. langer Spoilerteil, Matthew war begeistert" />` : ''}
 
+      <label style="margin-top:16px;">🎤 Gast in dieser Folge <span class="muted">(nur hier, nicht dauerhaft)</span></label>
+      <textarea id="epGaeste" rows="2"
+        placeholder="Tina: Comedy-Fan, schaut Filme fürs Gefühl statt fürs Detail.">${escapeHtml(ep.gaeste || '')}</textarea>
+      <p class="field-hint">Eine Zeile je Gast, Form <b>Name: wie sie tickt</b>. Wer hier steht, bekommt im
+        Infotext einen eigenen Satz und wird ausdrücklich als Gast benannt. Die Stammbesetzung aus den
+        Einstellungen bleibt unberührt — beim nächsten Mal ist das Feld wieder leer.</p>
+
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:20px;">
         <b style="font-size:.95rem;">🎚️ Klang nachjustieren</b>
         <p class="field-hint" style="margin-top:4px;">Wird immer aus den <b>Originalaufnahmen</b> neu berechnet — du kannst also beliebig oft probieren, ohne Qualität zu verlieren.</p>
@@ -882,7 +889,9 @@ async function renderEpisode(id) {
     try {
       const r = await api(`/api/episodes/${encodeURIComponent(id)}/describe`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hinweise }),
+        // Gäste immer mitschicken – auch leer. So räumt ein geleertes Feld sie
+        // wieder weg, statt sie an der Folge kleben zu lassen.
+        body: JSON.stringify({ hinweise, gaeste: ($('#epGaeste')?.value || '').trim() }),
       });
       const neu = (r.vorschlag || '').trim();
       if (!neu) throw new Error('Die KI hat keinen Text geliefert.');

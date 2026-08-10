@@ -257,6 +257,22 @@ Wichtig: In `SETUP-WERTE.md` stehen **keine** R2-Schlüssel (nur Bucket,
 Account-ID, öffentliche Adresse). Ohne Schlüssel kein Zugriff auf die Bilder im
 Speicher, obwohl der Endpunkt erreichbar wäre.
 
+## Gäste: gehören an die FOLGE, nicht in die Einstellungen
+
+Die Stammbesetzung steht global unter `settings.crew`. Ein Gast darf da **nicht**
+hinein — sonst steht er in jedem künftigen Infotext, sobald man ihn zu löschen
+vergisst. Deshalb gibt es `ep.gaeste` an der einzelnen Folge (Feld „🎤 Gast in
+dieser Folge" in der Folgenansicht, Form `Name: wie er/sie tickt`, eine Zeile je
+Gast).
+
+`buildPrompt()` hängt Gäste hinten an, führt sie aber in einem eigenen Abschnitt
+„ZU GAST IN GENAU DIESER FOLGE" auf — damit das Modell „zu Gast" schreibt statt
+„wie immer". Die Satzzahl (`namen.length + 2`) wächst automatisch mit.
+
+Geprüft: ohne Gast 5 Sätze / 3 Personen, mit Gast 6 Sätze / 4 Personen, Gast
+genau einmal im Auftrag. Ein geleertes Feld entfernt ihn wieder — die Anfrage
+schickt `gaeste` immer mit, auch leer.
+
 ## Infotext — Form
 
 Kurz halten. Der Nutzer will ausdrücklich **keine** langen Show Notes:

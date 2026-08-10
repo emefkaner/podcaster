@@ -19,18 +19,27 @@ export const DEFAULT_CREW = [
   + 'sagt aber genauso deutlich, wenn er ihn für Müll hält, auch wenn die anderen beiden begeistert sind.',
 ].join('\n');
 
-export async function generateDescription({ transcript, title, hinweise = '' }) {
+export async function generateDescription({ transcript, title, hinweise = '', gaeste = '' }) {
   const clean = (transcript || '').trim();
   const settings = getSettings();
-  const crew = (settings.crew || DEFAULT_CREW).trim();
   const podcast = settings.title || 'Cinespasten';
+
+  // Gäste gehören zu EINER Folge, nicht zur Stammbesetzung. Sie stehen deshalb
+  // an der Folge und werden hier nur für diesen einen Text angehängt – sonst
+  // müsste man sie in den Einstellungen eintragen und hinterher wieder
+  // herauslöschen, und beim Vergessen stünden sie in jedem künftigen Infotext.
+  const crew = [
+    (settings.crew || DEFAULT_CREW).trim(),
+    (gaeste || '').trim(),
+  ].filter(Boolean).join('\n');
 
   // Der Aufhänger kommt IMMER aus einer Recherche zum Film, nicht aus dem
   // Gespräch – so bleibt er spoilerfrei. Das Transkript liefert nur, was die
   // drei tatsächlich vom Film halten.
   const mitTranskript = Boolean(clean);
   const prompt = buildPrompt({
-    transcript: clean, title, crew, podcast, mitTranskript, hinweise: hinweise.trim(),
+    transcript: clean, title, crew, podcast, mitTranskript,
+    hinweise: hinweise.trim(), gaeste: (gaeste || '').trim(),
   });
 
   const gruende = [];
@@ -79,15 +88,24 @@ export async function generateDescription({ transcript, title, hinweise = '' }) 
 }
 
 // Exportiert, damit sich die Form ohne Netzaufruf nachprüfen lässt.
-export function buildPrompt({ transcript, title, crew, podcast, mitTranskript, hinweise }) {
-  const namen = crew.split('\n').map((z) => z.split(':')[0].trim()).filter(Boolean);
+export function buildPrompt({ transcript, title, crew, podcast, mitTranskript, hinweise, gaeste = '' }) {
+  const zeilenNamen = (t) => t.split('\n').map((z) => z.split(':')[0].trim()).filter(Boolean);
+  // Gäste stehen im Fließtext gleichberechtigt neben den Hosts – aber das
+  // Modell soll wissen, wer nur diesmal dabei ist, damit der Satz stimmt
+  // („zu Gast" statt „wie immer").
+  const stamm = gaeste ? crew.replace(gaeste, '').trim() : crew;
+  const namen = [...zeilenNamen(stamm), ...zeilenNamen(gaeste)];
 
   return [
     `Du schreibst die Folgenbeschreibung für den deutschsprachigen Filmpodcast „${podcast}".`,
     'Sie ist bewusst SEHR KURZ – niemand liest lange Show Notes.',
     '',
     'DIE HOSTS:',
-    crew,
+    stamm,
+    gaeste ? '' : null,
+    gaeste ? 'ZU GAST IN GENAU DIESER FOLGE (kein festes Mitglied – im Satz so' : null,
+    gaeste ? 'kenntlich machen, etwa „zu Gast" oder „diesmal dabei"):' : null,
+    gaeste || null,
     '',
     'ZUERST RECHERCHIEREN: Schlag den Film im Netz nach und nimm dir eine',
     'SPOILERFREIE Inhaltsangabe – also nur die Ausgangslage, mit der der Film',
@@ -106,7 +124,7 @@ export function buildPrompt({ transcript, title, crew, podcast, mitTranskript, h
     'Sonst NICHTS: keine Überschrift, keine Einleitung, keine Stichpunkte,',
     'keine Hashtags, kein Fazit-Absatz, keine Hinweise auf deine Quellen.',
     '',
-    'TON: Deutsch, locker und witzig, wie die drei selbst reden. Kein Werbesprech.',
+    'TON: Deutsch, locker und witzig, wie sie selbst reden. Kein Werbesprech.',
     'Kein Satz länger als etwa 25 Wörter. Nichts erfinden, was es im Film nicht gibt.',
     '',
     title ? `Film bzw. Serie dieser Folge: ${title}` : null,
