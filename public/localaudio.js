@@ -112,7 +112,7 @@ async function rnnoiseBereitstellen(ffmpeg, onStatus) {
 
 // Dieselbe Filterkette wie auf dem Server – hier nur lokal gerechnet.
 // Klassische Filter und RNNoise sind einzeln zuschaltbar.
-function filterKette({ enhance, trimSilence }) {
+function filterKette({ enhance, trimSilence, normalize }) {
   const teile = [];
   const klassisch = Boolean(enhance?.enabled);
   const rnn = Boolean(enhance?.rnnoise);
@@ -132,7 +132,9 @@ function filterKette({ enhance, trimSilence }) {
     teile.push(`silenceremove=stop_periods=-1:stop_duration=${stop}:stop_threshold=-38dB:stop_silence=0.4`);
   }
 
-  teile.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  // Jeden Teil einzeln auf dieselbe Lautheit ziehen – nur so sind Teil 1 und
+  // Teil 2 hinterher gleich laut.
+  if (normalize?.enabled !== false) teile.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   return teile.join(',');
 }
 

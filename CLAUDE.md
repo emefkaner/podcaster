@@ -257,6 +257,39 @@ Wichtig: In `SETUP-WERTE.md` stehen **keine** R2-Schlüssel (nur Bucket,
 Account-ID, öffentliche Adresse). Ohne Schlüssel kein Zugriff auf die Bilder im
 Speicher, obwohl der Endpunkt erreichbar wäre.
 
+## Wellenform-Editor: Zoom und Vorhören (08/2026)
+
+- **Auflösung:** `generatePeaks` liefert jetzt **8 Werte je Sekunde** statt
+  pauschal 1200 (Grenzen 1200…12000). Bei 40 Minuten waren 1200 Werte = 2 s je
+  Strich, ein 10-Sekunden-Bereich also ~2 Pixel breit und nicht zu treffen.
+  Zwischengespeicherte Kurven älterer Läufe werden über `PEAKS_VERSION`
+  verworfen und neu gerechnet.
+- **Sichtfenster** `st.view` statt fester Vollansicht. Gezeichnet wird je
+  Bildspalte der lauteste Wert des dahinterliegenden Zeitraums — dadurch stimmt
+  die Kurve auf jeder Zoomstufe. Bedienung: 🔍+ / 🔍− / Alles / Auf Auswahl,
+  Mausrad zoomt am Zeiger, Übersichtsstreifen darunter verschiebt den
+  Ausschnitt. Gemessen: 10 s sind tief gezoomt **580 Pixel** breit.
+- **Vorhören** über ein `<audio>`-Element (kein Web-Audio — das müsste die ganze
+  Datei dekodieren). Adresse kommt von `/quelle`, zeigt also direkt auf R2.
+  „Schnitt prüfen" spielt 3 s davor, springt über die Auswahl und spielt 3 s
+  danach — so hört man die Naht vor dem Schnitt.
+- **`/peaks` braucht ffmpeg**, das es im Sandkasten nicht gibt. Im Test wird die
+  Antwort per `page.route` untergeschoben; die Kurvenberechnung selbst bleibt
+  hier ungeprüft.
+
+## Lautstärke: `ep.normalize` (08/2026)
+
+Teil 1 und Teil 2 waren unterschiedlich laut. Grund: `loudnorm` lief nur im
+Filterpfad, und der wurde nur betreten, wenn Rauschunterdrückung oder
+Pausenkürzung an war. Beim Schnellpfad (`buildEpisodeCopy`) passierte gar
+nichts.
+
+Jetzt gibt es `ep.normalize.enabled` (Standard **an**), das den Filterpfad
+selbst auslöst. Jeder Teil wird **einzeln** auf −16 LUFS gezogen — nur so
+gleichen sich die Teile aneinander an. Achtung: Damit ist der schnelle
+Stream-Copy-Weg praktisch immer aus; auf Renders kleiner CPU dauert das Bauen
+entsprechend. Am Rechner („Auf diesem Gerät") ist es kein Thema.
+
 ## Gäste: gehören an die FOLGE, nicht in die Einstellungen
 
 Die Stammbesetzung steht global unter `settings.crew`. Ein Gast darf da **nicht**

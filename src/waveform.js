@@ -10,11 +10,27 @@ import { probeDuration } from './audio.js';
 
 const PEAK_RATE = 8000; // Abtastrate für die Analyse – für eine Kurve völlig ausreichend
 
+// Auflösung der Hüllkurve.
+//
+// Früher waren es pauschal 1200 Werte. Bei einer 40-Minuten-Aufnahme sind das
+// 2 Sekunden je Strich – ein 10-Sekunden-Bereich wäre fünf Striche breit und
+// mit der Maus nicht zu treffen. Mit 8 Werten je Sekunde sind es 0,125 s je
+// Strich; damit lässt sich hineinzoomen, ohne dass die Kurve zu Klötzen wird.
+// Die Obergrenze hält die Antwort bei sehr langen Aufnahmen im Rahmen
+// (12 000 Werte ≈ 70 KB JSON, komprimiert deutlich weniger).
+const WERTE_PRO_SEKUNDE = 8;
+const WERTE_MIN = 1200;
+const WERTE_MAX = 12000;
+
+// Version der Kurven-Berechnung. Steigt sie, werden zwischengespeicherte
+// Kurven aus älteren Läufen verworfen und neu gerechnet.
+export const PEAKS_VERSION = 2;
+
 /**
  * Berechnet die Hüllkurve einer Audiodatei.
  * @returns {Promise<{peaks:number[], duration:number}>} Werte zwischen 0 und 1
  */
-export async function generatePeaks(file, buckets = 1200) {
+export async function generatePeaks(file, buckets = null) {
   const raw = path.join(paths.tmp, `peaks-${path.basename(file)}.pcm`);
   try {
     await new Promise((resolve, reject) => {
@@ -32,9 +48,15 @@ export async function generatePeaks(file, buckets = 1200) {
     const total = Math.floor(buf.length / 2);
     if (!total) return { peaks: [], duration: 0 };
 
-    const per = Math.max(1, Math.floor(total / buckets));
+    // Anzahl der Werte aus der tatsächlichen Länge ableiten – erst hier ist
+    // sie ohne zusätzlichen ffprobe-Aufruf bekannt.
+    const dauer = total / PEAK_RATE;
+    const anzahl = buckets
+      || Math.min(WERTE_MAX, Math.max(WERTE_MIN, Math.round(dauer * WERTE_PRO_SEKUNDE)));
+
+    const per = Math.max(1, Math.floor(total / anzahl));
     const peaks = [];
-    for (let b = 0; b < buckets; b++) {
+    for (let b = 0; b < anzahl; b++) {
       const start = b * per;
       if (start >= total) break;
       let max = 0;

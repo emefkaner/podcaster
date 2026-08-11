@@ -12,7 +12,7 @@ import { generateDescription } from '../describe.js';
 import { uploadFile, downloadToFile, deleteKey, storageEnabled, publicUrl } from '../storage.js';
 import { config } from '../config.js';
 import { publishToAnchor } from '../anchorPublisher.js';
-import { generatePeaks, cutRegions } from '../waveform.js';
+import { generatePeaks, cutRegions, PEAKS_VERSION } from '../waveform.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -99,6 +99,11 @@ router.post('/', uploadFelder, async (req, res) => {
       // RNNoise ist unabhängig zuschaltbar und standardmäßig an: kostet nichts
       // und trifft Umgebungsgeräusche besser als die klassischen Filter.
       rnnoise: req.body.rnnoise !== 'false' && req.body.rnnoise !== '0',
+    },
+    // Alle Teile auf dieselbe Lautheit ziehen, damit Teil 1 und Teil 2 nicht
+    // unterschiedlich laut sind. Standardmäßig an – das will man fast immer.
+    normalize: {
+      enabled: req.body.normalize !== 'false' && req.body.normalize !== '0',
     },
     // Lange Sprechpausen automatisch kürzen.
     trimSilence: {
@@ -227,6 +232,9 @@ router.post('/:id/fertig', fertigUpload.single('fertig'), async (req, res) => {
         rnnoise: req.body.rnnoise === 'true',
       };
     }
+    if (req.body?.normalize !== undefined) {
+      cur.normalize = { enabled: req.body.normalize !== 'false' };
+    }
     if (req.body?.trimSeconds !== undefined) {
       cur.trimSilence = {
         enabled: req.body.trimSilence !== 'false',
@@ -251,7 +259,11 @@ router.get('/:id/parts/:partId/peaks', async (req, res) => {
   const part = (ep.parts || []).find((p) => p.id === req.params.partId);
   if (!part) return res.status(404).json({ error: 'Teil nicht gefunden' });
 
-  if (part.peaks?.length) return res.json({ peaks: part.peaks, duration: part.duration || 0 });
+  // Zwischengespeicherte Kurven aus älteren Läufen sind zu grob zum Zoomen
+  // und werden verworfen.
+  if (part.peaks?.length && part.peaksVersion === PEAKS_VERSION) {
+    return res.json({ peaks: part.peaks, duration: part.duration || 0 });
+  }
 
   const local = path.join(paths.tmp, `wf-${ep.id}-${part.id}${path.extname(part.key)}`);
   try {
@@ -261,7 +273,12 @@ router.get('/:id/parts/:partId/peaks', async (req, res) => {
 
     const cur = getEpisode(ep.id);
     const target = (cur.parts || []).find((p) => p.id === part.id);
-    if (target) { target.peaks = peaks; target.duration = duration; saveEpisode(cur); }
+    if (target) {
+      target.peaks = peaks;
+      target.duration = duration;
+      target.peaksVersion = PEAKS_VERSION;
+      saveEpisode(cur);
+    }
 
     res.json({ peaks, duration });
   } catch (e) {
@@ -573,6 +590,10 @@ router.put('/:id', (req, res) => {
     };
     ep.needsRebuild = true;
   }
+  if (req.body.normalize && typeof req.body.normalize === 'object') {
+    ep.normalize = { enabled: Boolean(req.body.normalize.enabled) };
+    ep.needsRebuild = true;
+  }
   if (req.body.trimSilence && typeof req.body.trimSilence === 'object') {
     ep.trimSilence = {
       enabled: Boolean(req.body.trimSilence.enabled),
@@ -759,7 +780,8 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
     const outPath = path.join(paths.tmp, `${id}.mp3`);
     tmpFiles.push(outPath);
 
-    const filterNoetig = !ep.lokalBearbeitet && (bereinigungNoetig(ep.enhance) || ep.trimSilence?.enabled);
+    const filterNoetig = !ep.lokalBearbeitet
+      && (bereinigungNoetig(ep.enhance) || ep.trimSilence?.enabled || ep.normalize?.enabled);
 
     let duration, size;
     if (fertigDatei) {
@@ -783,6 +805,7 @@ async function buildAndAnalyse(id, { withText = true, fertigDatei = null } = {})
         intro: introPath, main: partPaths, outro: outroPath, outFile: outPath,
         enhance: ep.enhance,
         trimSilence: ep.trimSilence,
+        normalize: ep.normalize,
         onProgress: ({ prozent }) => melde('Audio wird optimiert und zusammengebaut …', prozent),
       }));
     }

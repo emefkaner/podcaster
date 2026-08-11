@@ -283,13 +283,15 @@ function silenceChain(seconds) {
 }
 
 // Baut die vollständige Filterkette für eine Aufnahme.
-function mainChain({ enhance, trimSilence }) {
+function mainChain({ enhance, trimSilence, normalize }) {
   const parts = [];
   if (bereinigungNoetig(enhance)) parts.push(enhanceChain(enhance));
   if (trimSilence?.enabled) parts.push(silenceChain(trimSilence.seconds));
 
-  // 6) Auf Podcast-Standard-Lautheit normalisieren (-16 LUFS).
-  parts.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  // Auf Podcast-Standard-Lautheit bringen (-16 LUFS). Das ist der Grund,
+  // warum Teil 1 und Teil 2 hinterher gleich laut sind: JEDER Teil wird
+  // einzeln auf denselben Zielwert gezogen, nicht die fertige Folge.
+  if (normalize?.enabled !== false) parts.push('loudnorm=I=-16:TP=-1.5:LRA=11');
 
   return parts.join(',');
 }
@@ -299,7 +301,7 @@ function mainChain({ enhance, trimSilence }) {
 // etwa Vorgespräch und Spoilerteil, manchmal zusätzlich Wiederholungen.
 // Alle Segmente werden neu kodiert und normalisiert. Auf die Aufnahmen wird
 // – falls gewünscht – die KI-/DSP-Sprachoptimierung angewendet.
-export async function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence, onProgress }) {
+export async function buildEpisode({ intro, main, outro, outFile, enhance, trimSilence, normalize, onProgress }) {
   const mains = (Array.isArray(main) ? main : [main]).filter(Boolean);
   const ordered = [
     { file: intro, isMain: false },
@@ -325,7 +327,7 @@ export async function buildEpisode({ intro, main, outro, outFile, enhance, trimS
     ordered.forEach((seg, i) => {
       const base = `aformat=sample_rates=${SAMPLE_RATE}:channel_layouts=stereo,aresample=${SAMPLE_RATE}`;
       // Optimierung und Pausenkürzung nur auf die Aufnahmen, nicht auf Intro/Outro.
-      const processing = seg.isMain ? mainChain({ enhance, trimSilence }) : '';
+      const processing = seg.isMain ? mainChain({ enhance, trimSilence, normalize }) : '';
       const chain = processing ? `${processing},${base}` : base;
       filterParts.push(`[${i}:a]${chain}[a${i}]`);
     });

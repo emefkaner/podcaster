@@ -133,7 +133,28 @@ try {
     !(await page.locator('#wavePlaySel-p1').isDisabled())
     && !(await page.locator('#wavePlayCut-p1').isDisabled()),
     (await page.textContent('#waveInfo-p1')).trim());
+
+  // Zoom: ohne ihn ist ein 10-Sekunden-Bereich in einer 40-Minuten-Aufnahme
+  // nur wenige Pixel breit und mit der Maus nicht zu treffen.
+  const fensterBreite = async () => page.evaluate(() => {
+    const m = document.getElementById('waveInfo-p1').textContent
+      .match(/Ausschnitt (\d+):([\d.]+)–(\d+):([\d.]+)/);
+    return m ? (+m[3] * 60 + +m[4]) - (+m[1] * 60 + +m[2]) : null;
+  });
+  pruefe('Vor dem Zoomen ist die ganze Aufnahme zu sehen', (await fensterBreite()) === null);
+  await page.click('#waveZoomIn-p1');
+  const nachZoom = await fensterBreite();
+  pruefe('🔍+ verkleinert den Ausschnitt', nachZoom !== null && nachZoom < 30,
+    `Fenster jetzt ${nachZoom} s von 30 s`);
+  await page.click('#waveZoomAll-p1');
+  pruefe('„Alles" zeigt wieder die ganze Aufnahme', (await fensterBreite()) === null);
+
   await page.click('[data-id="p1"]'); // Editor wieder zu
+
+  // Lautstärke-Angleich: standardmäßig an, sonst sind Teil 1 und Teil 2
+  // unterschiedlich laut.
+  pruefe('Lautstärke-Angleich vorhanden und vorausgewählt',
+    (await page.locator('#reNorm').count()) === 1 && await page.locator('#reNorm').isChecked());
 
   // Speichern muss durchgehen.
   await page.fill('#epTitle', 'Rauchtest-Folge (geändert)');

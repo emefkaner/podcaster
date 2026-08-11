@@ -191,6 +191,13 @@ async function renderHome() {
       </div>
 
       <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+        <input type="checkbox" id="normChk" checked style="width:auto;" />
+        🔊 Alle Teile gleich laut machen
+      </label>
+      <p class="field-hint">Jeder Aufnahme-Teil wird einzeln auf dieselbe Lautheit gezogen (−16 LUFS,
+        Podcast-Standard). Ohne das ist Teil 2 oft deutlich lauter oder leiser als Teil 1.</p>
+
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;">
         <input type="checkbox" id="trimChk" checked style="width:auto;" />
         Lange Pausen automatisch kürzen
       </label>
@@ -345,8 +352,9 @@ async function submitEpisode() {
     strength: Number($('#strength').value),
     rnnoise: $('#rnnChk').checked,
   };
+  const normalize = { enabled: $('#normChk').checked };
   const trimSilence = { enabled: $('#trimChk').checked, seconds: Number($('#trimSec').value) / 10 };
-  const willFilter = enhance.enabled || enhance.rnnoise || trimSilence.enabled;
+  const willFilter = enhance.enabled || enhance.rnnoise || trimSilence.enabled || normalize.enabled;
   const canLocal = $('#lokalChk')?.checked && localAudio && localAudio.lokalMoeglich();
 
   btn.disabled = true;
@@ -383,7 +391,7 @@ async function submitEpisode() {
         let nr = 0;
         for (const datei of quellen) {
           nr++;
-          const fertig = await localAudio.lokalAufbereiten(datei, { enhance, trimSilence },
+          const fertig = await localAudio.lokalAufbereiten(datei, { enhance, trimSilence, normalize },
             (text, pct) => setzeBalken(pct, `Teil ${nr} von ${quellen.length}: ${text}`));
           fertige.push([fertig, datei.name.replace(/\.[^.]+$/, '') + '.mp3']);
         }
@@ -429,6 +437,7 @@ async function submitEpisode() {
       fd.append('enhance', (filterAufServer && enhance.enabled) ? 'true' : 'false');
       fd.append('strength', String(enhance.strength));
       fd.append('rnnoise', (filterAufServer && enhance.rnnoise) ? 'true' : 'false');
+      fd.append('normalize', (filterAufServer && normalize.enabled) ? 'true' : 'false');
       fd.append('trimSilence', (filterAufServer && trimSilence.enabled) ? 'true' : 'false');
       fd.append('trimSeconds', String(trimSilence.seconds));
     }
@@ -726,6 +735,13 @@ async function renderEpisode(id) {
         <input type="range" id="reStrength" min="0" max="100" value="${ep.enhance?.strength ?? 20}" style="width:100%;" />
         <p class="field-hint">Klingt es dumpf oder blechern, war es zu stark — dann runter auf 20–30 %.
           Lässt sich mit der KI-Entrauschung kombinieren oder ganz weglassen.</p>
+
+        <label style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+          <input type="checkbox" id="reNorm" ${ep.normalize?.enabled !== false ? 'checked' : ''} style="width:auto;" />
+          🔊 Alle Teile gleich laut machen
+        </label>
+        <p class="field-hint">Zieht jeden Teil einzeln auf −16 LUFS. Genau das gleicht unterschiedlich
+          laute Aufnahmen aneinander an.</p>
 
         <label style="display:flex;align-items:center;gap:10px;margin-top:10px;">
           <input type="checkbox" id="reTrim" ${ep.trimSilence?.enabled ? 'checked' : ''} style="width:auto;" />
@@ -1084,6 +1100,7 @@ function klangStandText(ep) {
   if (ep.enhance?.enabled) teile.push(`${ep.enhance.strength ?? 20} % klassische Rauschunterdrückung`);
   if (!ep.enhance?.rnnoise && !ep.enhance?.enabled) teile.push('ohne Rauschunterdrückung');
 
+  if (ep.normalize?.enabled !== false) teile.push('Teile gleich laut');
   if (ep.trimSilence?.enabled) {
     teile.push(`Pausen ab ${(ep.trimSilence.seconds ?? 2).toFixed(1).replace('.', ',')} s gekürzt`);
   } else {
@@ -1134,6 +1151,7 @@ function reEinstellungen() {
       strength: Number($('#reStrength').value),
       rnnoise: $('#reRnn').checked,
     },
+    normalize: { enabled: $('#reNorm').checked },
     trimSilence: {
       enabled: $('#reTrim').checked,
       seconds: Number($('#reTrimSec').value) / 10,
@@ -1186,8 +1204,8 @@ function wireNachjustieren(id, ep) {
     const teile = ep.parts || [];
     if (!teile.length) return toast('Keine Originalaufnahmen vorhanden.');
 
-    const enhance = reEinstellungen().enhance;
-    const trimSilence = reEinstellungen().trimSilence;
+    const werte = reEinstellungen();
+    const { enhance, trimSilence, normalize } = werte;
 
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Rechnet …';
     info.innerHTML = `<div class="progress" style="margin-top:10px;"><div class="progress-fill" id="reFill"></div></div>
@@ -1212,7 +1230,7 @@ function wireNachjustieren(id, ep) {
 
       const bearbeitet = [];
       for (let i = 0; i < originale.length; i++) {
-        bearbeitet.push(await localAudio.lokalAufbereiten(originale[i], { enhance, trimSilence },
+        bearbeitet.push(await localAudio.lokalAufbereiten(originale[i], { enhance, trimSilence, normalize },
           (text, pct) => setz(pct, `Teil ${i + 1} von ${originale.length}: ${text}`)));
       }
 
@@ -1226,6 +1244,7 @@ function wireNachjustieren(id, ep) {
       fd.append('enhance', String(enhance.enabled));
       fd.append('strength', String(enhance.strength));
       fd.append('rnnoise', String(enhance.rnnoise));
+      fd.append('normalize', String(normalize.enabled));
       fd.append('trimSilence', String(trimSilence.enabled));
       fd.append('trimSeconds', String(trimSilence.seconds));
       await uploadMitFortschritt(`/api/episodes/${encodeURIComponent(id)}/fertig`, fd,
@@ -1329,11 +1348,21 @@ async function openWaveEditor(episodeId, partId) {
     waveState[partId] = {
       peaks: data.peaks, duration: data.duration, sel: null,
       audio: null, kopf: 0, stopBei: null, sprungAuf: null,
+      // Sichtfenster in Sekunden. Anfangs die ganze Aufnahme.
+      view: { start: 0, end: data.duration },
     };
 
     box.innerHTML = `
       <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg);">
         <canvas id="wave-${partId}" style="width:100%;height:90px;display:block;touch-action:none;cursor:crosshair;"></canvas>
+        <canvas id="waveMini-${partId}" title="Ganze Aufnahme – hier klicken oder ziehen, um den Ausschnitt zu verschieben"
+                style="width:100%;height:26px;display:block;margin-top:4px;touch-action:none;cursor:grab;"></canvas>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn ghost small" id="waveZoomIn-${partId}" title="Hineinzoomen">🔍+</button>
+          <button class="btn ghost small" id="waveZoomOut-${partId}" title="Herauszoomen">🔍−</button>
+          <button class="btn ghost small" id="waveZoomAll-${partId}" title="Ganze Aufnahme zeigen">Alles</button>
+          <button class="btn ghost small" id="waveZoomSel-${partId}" disabled title="Auf die Markierung zoomen">Auf Auswahl</button>
+        </div>
         <p class="field-hint" id="waveInfo-${partId}" style="margin:8px 0 0;">
           Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(data.duration)}
         </p>
@@ -1437,6 +1466,37 @@ function fmtClock(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// Mit Zehntelsekunde – beim Hineinzoomen ist „0:07" zu grob, um eine Marke
+// wiederzufinden.
+function fmtClockFein(sec) {
+  const s = Math.max(0, sec || 0);
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
+}
+
+// Kleinste sinnvolle Fensterbreite. Weiter hineinzuzoomen bringt nichts, weil
+// die Kurve nur 8 Werte je Sekunde hat.
+const WAVE_MIN_FENSTER = 1.5; // Sekunden
+
+function waveSicht(st) {
+  return st.view || { start: 0, end: st.duration };
+}
+
+// Sichtfenster setzen, dabei in den Grenzen der Aufnahme halten.
+function waveZoom(partId, start, end) {
+  const st = waveState[partId];
+  if (!st) return;
+  let s = start, e = end;
+  const spanne = Math.max(WAVE_MIN_FENSTER, Math.min(st.duration, e - s));
+  const mitte = (s + e) / 2;
+  s = mitte - spanne / 2;
+  e = mitte + spanne / 2;
+  if (s < 0) { e -= s; s = 0; }
+  if (e > st.duration) { s -= e - st.duration; e = st.duration; }
+  st.view = { start: Math.max(0, s), end: Math.min(st.duration, e) };
+  drawWave(partId);
+}
+
 function drawWave(partId) {
   const cv = document.getElementById(`wave-${partId}`);
   const st = waveState[partId];
@@ -1453,29 +1513,40 @@ function drawWave(partId) {
   const accent = style.getPropertyValue('--primary').trim() || '#6366f1';
   const mid = h / 2;
   const n = st.peaks.length;
+  const v = waveSicht(st);
+  const spanne = Math.max(0.001, v.end - v.start);
+  const zeitZuX = (t) => ((t - v.start) / spanne) * w;
 
   // Markierter Bereich als Hintergrund.
   if (st.sel) {
-    const x1 = (st.sel.start / st.duration) * w;
-    const x2 = (st.sel.end / st.duration) * w;
+    const x1 = zeitZuX(st.sel.start);
+    const x2 = zeitZuX(st.sel.end);
     ctx.fillStyle = 'rgba(239,68,68,0.25)';
     ctx.fillRect(Math.min(x1, x2), 0, Math.abs(x2 - x1), h);
   }
 
+  // Je Bildspalte den lautesten Wert des dahinterliegenden Zeitraums zeichnen.
+  // So stimmt die Kurve auf jeder Zoomstufe – herausgezoomt zusammengefasst,
+  // hineingezoomt fein aufgelöst.
   ctx.strokeStyle = accent;
-  ctx.lineWidth = Math.max(1, w / n * 0.8);
-  for (let i = 0; i < n; i++) {
-    const x = (i / n) * w;
-    const amp = st.peaks[i] * (h / 2) * 0.95;
+  ctx.lineWidth = 1;
+  const proPixel = spanne / w;
+  for (let px = 0; px < w; px++) {
+    const t0 = v.start + px * proPixel;
+    const a = Math.floor((t0 / st.duration) * n);
+    const b = Math.max(a + 1, Math.ceil(((t0 + proPixel) / st.duration) * n));
+    let max = 0;
+    for (let i = Math.max(0, a); i < Math.min(b, n); i++) if (st.peaks[i] > max) max = st.peaks[i];
+    const amp = max * (h / 2) * 0.95;
     ctx.beginPath();
-    ctx.moveTo(x, mid - amp);
-    ctx.lineTo(x, mid + amp);
+    ctx.moveTo(px + 0.5, mid - amp);
+    ctx.lineTo(px + 0.5, mid + amp);
     ctx.stroke();
   }
 
   // Abspielkopf – ohne ihn hört man zwar etwas, weiß aber nicht, wo man ist.
-  if (st.audio && st.kopf > 0) {
-    const x = (st.kopf / st.duration) * w;
+  if (st.audio && st.kopf > 0 && st.kopf >= v.start && st.kopf <= v.end) {
+    const x = zeitZuX(st.kopf);
     ctx.strokeStyle = '#f8fafc';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1483,6 +1554,54 @@ function drawWave(partId) {
     ctx.lineTo(x, h);
     ctx.stroke();
   }
+
+  drawWaveMini(partId);
+}
+
+// Übersichtsstreifen: die ganze Aufnahme, mit dem aktuellen Ausschnitt als
+// hellem Fenster. Ohne den weiß man beim Hineinzoomen nicht mehr, wo man ist.
+function drawWaveMini(partId) {
+  const cv = document.getElementById(`waveMini-${partId}`);
+  const st = waveState[partId];
+  if (!cv || !st) return;
+
+  const ratio = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * ratio; cv.height = h * ratio;
+  const ctx = cv.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.clearRect(0, 0, w, h);
+
+  const n = st.peaks.length, mid = h / 2;
+  ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+  ctx.lineWidth = 1;
+  for (let px = 0; px < w; px++) {
+    const a = Math.floor((px / w) * n);
+    const b = Math.max(a + 1, Math.ceil(((px + 1) / w) * n));
+    let max = 0;
+    for (let i = a; i < Math.min(b, n); i++) if (st.peaks[i] > max) max = st.peaks[i];
+    const amp = max * (h / 2) * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(px + 0.5, mid - amp);
+    ctx.lineTo(px + 0.5, mid + amp);
+    ctx.stroke();
+  }
+
+  // Markierung auch hier andeuten, damit man sie beim Zoomen wiederfindet.
+  if (st.sel) {
+    ctx.fillStyle = 'rgba(239,68,68,0.45)';
+    const x1 = (st.sel.start / st.duration) * w;
+    ctx.fillRect(x1, 0, Math.max(1, ((st.sel.end - st.sel.start) / st.duration) * w), h);
+  }
+
+  const v = waveSicht(st);
+  const fx = (v.start / st.duration) * w;
+  const fw = Math.max(2, ((v.end - v.start) / st.duration) * w);
+  ctx.fillStyle = 'rgba(248,250,252,0.16)';
+  ctx.fillRect(fx, 0, fw, h);
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(fx + 0.5, 0.5, fw - 1, h - 1);
 }
 
 function wireWave(episodeId, partId) {
@@ -1493,14 +1612,20 @@ function wireWave(episodeId, partId) {
   const clearBtn = document.getElementById(`waveClear-${partId}`);
   let dragging = false, anchor = 0;
 
+  // Rechnet einen Mauszeiger in eine Zeit um – über das SICHTFENSTER, nicht
+  // über die ganze Aufnahme. Sonst zeigt der Zoom ins Leere.
   const posToTime = (e) => {
     const r = cv.getBoundingClientRect();
+    const v = waveSicht(st);
     const x = ((e.touches?.[0]?.clientX ?? e.clientX) - r.left) / r.width;
-    return Math.min(st.duration, Math.max(0, x * st.duration));
+    const t = v.start + Math.min(1, Math.max(0, x)) * (v.end - v.start);
+    return Math.min(st.duration, Math.max(0, t));
   };
   const playSel = document.getElementById(`wavePlaySel-${partId}`);
   const playCut = document.getElementById(`wavePlayCut-${partId}`);
   const stopBtn = document.getElementById(`waveStop-${partId}`);
+
+  const zoomSel = document.getElementById(`waveZoomSel-${partId}`);
 
   const update = () => {
     drawWave(partId);
@@ -1509,9 +1634,16 @@ function wireWave(episodeId, partId) {
     clearBtn.disabled = !st.sel;
     playSel.disabled = !has;
     playCut.disabled = !has;
+    zoomSel.disabled = !has;
+    const v = waveSicht(st);
+    const ausschnitt = v.end - v.start < st.duration - 0.5
+      ? ` · Ausschnitt ${fmtClockFein(v.start)}–${fmtClockFein(v.end)}`
+      : '';
     info.textContent = has
-      ? `Markiert: ${fmtClock(st.sel.start)} – ${fmtClock(st.sel.end)} (${(st.sel.end - st.sel.start).toFixed(1)} Sek.)`
-      : `Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(st.duration)}`;
+      ? `Markiert: ${fmtClockFein(st.sel.start)} – ${fmtClockFein(st.sel.end)} `
+        + `(${(st.sel.end - st.sel.start).toFixed(1)} Sek.)${ausschnitt}`
+      : `Ziehe über die Kurve, um einen Bereich zu markieren. `
+        + `Länge: ${fmtClock(st.duration)}${ausschnitt}`;
   };
 
   const start = (e) => { dragging = true; anchor = posToTime(e); st.sel = { start: anchor, end: anchor }; update(); e.preventDefault(); };
@@ -1537,6 +1669,54 @@ function wireWave(episodeId, partId) {
   cv.addEventListener('pointerdown', start);
   cv.addEventListener('pointermove', moveTo);
   window.addEventListener('pointerup', end);
+
+  // ---- Zoom ----
+  const zoomUm = (faktor, umZeit = null) => {
+    const v = waveSicht(st);
+    const spanne = v.end - v.start;
+    const anker = umZeit === null ? (v.start + v.end) / 2 : umZeit;
+    const neu = spanne * faktor;
+    // Ankerpunkt behält seine relative Lage im Fenster – so bleibt die Stelle
+    // unter dem Mauszeiger beim Zoomen stehen.
+    const anteil = spanne > 0 ? (anker - v.start) / spanne : 0.5;
+    waveZoom(partId, anker - neu * anteil, anker + neu * (1 - anteil));
+    update();
+  };
+
+  document.getElementById(`waveZoomIn-${partId}`)
+    .addEventListener('click', () => zoomUm(0.4, st.sel ? (st.sel.start + st.sel.end) / 2 : null));
+  document.getElementById(`waveZoomOut-${partId}`)
+    .addEventListener('click', () => zoomUm(2.5));
+  document.getElementById(`waveZoomAll-${partId}`)
+    .addEventListener('click', () => { waveZoom(partId, 0, st.duration); update(); });
+  zoomSel.addEventListener('click', () => {
+    if (!st.sel) return;
+    // Etwas Luft links und rechts, damit man die Ränder noch sieht.
+    const rand = Math.max(0.5, (st.sel.end - st.sel.start) * 0.35);
+    waveZoom(partId, st.sel.start - rand, st.sel.end + rand);
+    update();
+  });
+
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomUm(e.deltaY > 0 ? 1.25 : 0.8, posToTime(e));
+  }, { passive: false });
+
+  // ---- Übersichtsstreifen: Ausschnitt verschieben ----
+  const mini = document.getElementById(`waveMini-${partId}`);
+  let schiebt = false;
+  const miniSetzen = (e) => {
+    const r = mini.getBoundingClientRect();
+    const anteil = Math.min(1, Math.max(0, ((e.touches?.[0]?.clientX ?? e.clientX) - r.left) / r.width));
+    const v = waveSicht(st);
+    const spanne = v.end - v.start;
+    const mitte = anteil * st.duration;
+    waveZoom(partId, mitte - spanne / 2, mitte + spanne / 2);
+    update();
+  };
+  mini.addEventListener('pointerdown', (e) => { schiebt = true; miniSetzen(e); e.preventDefault(); });
+  mini.addEventListener('pointermove', (e) => { if (schiebt) { miniSetzen(e); e.preventDefault(); } });
+  window.addEventListener('pointerup', () => { schiebt = false; });
 
   playSel.addEventListener('click', () => {
     if (st.sel) waveAbspielen(partId, st.sel.start, st.sel.end);
