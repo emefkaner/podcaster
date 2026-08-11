@@ -108,6 +108,33 @@ try {
   pruefe('RNNoise-Modell wird ausgeliefert', modell.ok() && modellBytes > 100000,
     `HTTP ${modell.status()}, ${modellBytes} Bytes`);
 
+  // Wellenform-Editor: markieren UND anhören. `/peaks` braucht ffmpeg, das es
+  // hier nicht gibt — die Antwort wird deshalb untergeschoben. Geprüft wird,
+  // was daran im Browser hängt.
+  await page.route('**/peaks', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ duration: 30, peaks: Array.from({ length: 200 }, () => 0.5) }),
+  }));
+  await page.click('[data-id="p1"]');
+  await page.waitForSelector('#wave-p1', { timeout: 10000 });
+  pruefe('Wellenform-Editor hat Abhör-Knöpfe',
+    (await page.locator('#wavePlaySel-p1').count()) === 1
+    && (await page.locator('#wavePlayCut-p1').count()) === 1
+    && (await page.locator('#waveStop-p1').count()) === 1);
+  pruefe('Ohne Auswahl ist Anhören gesperrt', await page.locator('#wavePlaySel-p1').isDisabled());
+
+  const wbox = await page.locator('#wave-p1').boundingBox();
+  await page.mouse.move(wbox.x + wbox.width * 0.2, wbox.y + wbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wbox.x + wbox.width * 0.5, wbox.y + wbox.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  pruefe('Nach dem Markieren ist Anhören frei',
+    !(await page.locator('#wavePlaySel-p1').isDisabled())
+    && !(await page.locator('#wavePlayCut-p1').isDisabled()),
+    (await page.textContent('#waveInfo-p1')).trim());
+  await page.click('[data-id="p1"]'); // Editor wieder zu
+
   // Speichern muss durchgehen.
   await page.fill('#epTitle', 'Rauchtest-Folge (geändert)');
   await page.click('#saveBtn');

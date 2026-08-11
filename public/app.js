@@ -95,6 +95,9 @@ window.addEventListener('popstate', render);
 
 function render() {
   stopProc(); // laufende Fortschritts-Abfrage einer anderen Seite beenden
+  // Ein laufendes Vorhören im Wellenform-Editor gehört zur verlassenen Seite –
+  // sonst spielt es unsichtbar weiter.
+  for (const id of Object.keys(waveState)) waveStoppen(id);
   const p = location.pathname;
   if (p === '/settings') return renderSettings();
   const m = p.match(/^\/episode\/(.+)$/);
@@ -1309,12 +1312,12 @@ function wireParts(id, ep) {
 }
 
 // ---- Wellenform-Editor: Bereiche markieren und herausschneiden ----
-const waveState = {}; // partId -> { peaks, duration, sel: {start,end}|null }
+const waveState = {}; // partId -> { peaks, duration, sel, audio, kopf, stopBei, sprungAuf }
 
 async function openWaveEditor(episodeId, partId) {
   const box = document.getElementById(`editor-${partId}`);
   if (!box) return;
-  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  if (!box.classList.contains('hidden')) { waveStoppen(partId); box.classList.add('hidden'); return; }
 
   box.classList.remove('hidden');
   box.innerHTML = '<p class="field-hint"><span class="spinner"></span> Wellenform wird berechnet …</p>';
@@ -1323,13 +1326,25 @@ async function openWaveEditor(episodeId, partId) {
     const data = waveState[partId]?.peaks
       ? waveState[partId]
       : await api(`/api/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/peaks`);
-    waveState[partId] = { peaks: data.peaks, duration: data.duration, sel: null };
+    waveState[partId] = {
+      peaks: data.peaks, duration: data.duration, sel: null,
+      audio: null, kopf: 0, stopBei: null, sprungAuf: null,
+    };
 
     box.innerHTML = `
       <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg);">
         <canvas id="wave-${partId}" style="width:100%;height:90px;display:block;touch-action:none;cursor:crosshair;"></canvas>
         <p class="field-hint" id="waveInfo-${partId}" style="margin:8px 0 0;">
           Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(data.duration)}
+        </p>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn small" id="wavePlaySel-${partId}" disabled>▶︎ Auswahl anhören</button>
+          <button class="btn small" id="wavePlayCut-${partId}" disabled
+                  title="Spielt 3 s davor, überspringt die Auswahl und spielt 3 s danach">▶︎ Schnitt prüfen</button>
+          <button class="btn ghost small" id="waveStop-${partId}" disabled>■ Stopp</button>
+        </div>
+        <p class="field-hint" id="wavePlayInfo-${partId}" style="margin:6px 0 0;">
+          Ein kurzer Klick auf die Kurve springt dorthin und spielt von dort ab.
         </p>
         <div class="btn-row" style="margin-top:8px;">
           <button class="btn ghost small" id="waveClear-${partId}" disabled>Auswahl aufheben</button>
@@ -1339,8 +1354,81 @@ async function openWaveEditor(episodeId, partId) {
 
     drawWave(partId);
     wireWave(episodeId, partId);
+    // Audio danach nachladen – die Wellenform soll nicht darauf warten.
+    audioAnhaengen(episodeId, partId);
   } catch (e) {
     box.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// Hängt ein <audio> an den Editor.
+//
+// Bewusst ein Medienelement und KEIN Web-Audio: Das streamt und springt, ohne
+// die Datei vollständig zu laden. Bei einer zweistündigen Aufnahme lägen sonst
+// hunderte MB im Arbeitsspeicher, nur um zehn Sekunden zu hören.
+// Die Adresse kommt von /quelle und zeigt möglichst direkt auf den Speicher –
+// dann kostet das Vorhören auch keine Bandbreite der App.
+async function audioAnhaengen(episodeId, partId) {
+  const st = waveState[partId];
+  const info = document.getElementById(`wavePlayInfo-${partId}`);
+  if (!st) return;
+
+  const basis = `/api/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}`;
+  let url = `${basis}/file`;
+  try {
+    const quelle = await api(`${basis}/quelle`);
+    if (quelle?.direkt && quelle.url) url = quelle.url;
+  } catch { /* Rückfallweg über die App bleibt */ }
+
+  const audio = new Audio();
+  audio.preload = 'metadata';
+  audio.src = url;
+  st.audio = audio;
+
+  audio.addEventListener('timeupdate', () => {
+    // Erst über die Auswahl hinwegspringen, dann am Ziel anhalten.
+    if (st.sprungAuf && audio.currentTime >= st.sprungAuf.ab) {
+      audio.currentTime = st.sprungAuf.nach;
+      st.stopBei = st.sprungAuf.bis;
+      st.sprungAuf = null;
+    } else if (st.stopBei !== null && audio.currentTime >= st.stopBei) {
+      waveStoppen(partId);
+      return;
+    }
+    st.kopf = audio.currentTime;
+    drawWave(partId);
+  });
+  audio.addEventListener('ended', () => waveStoppen(partId));
+  audio.addEventListener('error', () => {
+    if (info) info.innerHTML = '<span class="error">Vorhören nicht möglich — die Aufnahme ließ sich nicht laden.</span>';
+  });
+}
+
+function waveStoppen(partId) {
+  const st = waveState[partId];
+  if (!st?.audio) return;
+  st.audio.pause();
+  st.stopBei = null;
+  st.sprungAuf = null;
+  const stop = document.getElementById(`waveStop-${partId}`);
+  if (stop) stop.disabled = true;
+  drawWave(partId);
+}
+
+// Ab `von` abspielen und bei `bis` anhalten (bis = null: bis zum Ende).
+async function waveAbspielen(partId, von, bis, sprungAuf = null) {
+  const st = waveState[partId];
+  if (!st?.audio) return;
+  st.stopBei = bis;
+  st.sprungAuf = sprungAuf;
+  st.audio.currentTime = Math.max(0, von);
+  const stop = document.getElementById(`waveStop-${partId}`);
+  try {
+    await st.audio.play();
+    if (stop) stop.disabled = false;
+  } catch (e) {
+    const info = document.getElementById(`wavePlayInfo-${partId}`);
+    if (info) info.innerHTML = `<span class="error">Abspielen ging nicht: ${escapeHtml(e.message)}</span>`;
   }
 }
 
@@ -1384,6 +1472,17 @@ function drawWave(partId) {
     ctx.lineTo(x, mid + amp);
     ctx.stroke();
   }
+
+  // Abspielkopf – ohne ihn hört man zwar etwas, weiß aber nicht, wo man ist.
+  if (st.audio && st.kopf > 0) {
+    const x = (st.kopf / st.duration) * w;
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
 }
 
 function wireWave(episodeId, partId) {
@@ -1399,11 +1498,17 @@ function wireWave(episodeId, partId) {
     const x = ((e.touches?.[0]?.clientX ?? e.clientX) - r.left) / r.width;
     return Math.min(st.duration, Math.max(0, x * st.duration));
   };
+  const playSel = document.getElementById(`wavePlaySel-${partId}`);
+  const playCut = document.getElementById(`wavePlayCut-${partId}`);
+  const stopBtn = document.getElementById(`waveStop-${partId}`);
+
   const update = () => {
     drawWave(partId);
     const has = st.sel && st.sel.end - st.sel.start > 0.2;
     cutBtn.disabled = !has;
     clearBtn.disabled = !st.sel;
+    playSel.disabled = !has;
+    playCut.disabled = !has;
     info.textContent = has
       ? `Markiert: ${fmtClock(st.sel.start)} – ${fmtClock(st.sel.end)} (${(st.sel.end - st.sel.start).toFixed(1)} Sek.)`
       : `Ziehe über die Kurve, um einen Bereich zu markieren. Länge: ${fmtClock(st.duration)}`;
@@ -1416,11 +1521,41 @@ function wireWave(episodeId, partId) {
     st.sel = { start: Math.min(anchor, t), end: Math.max(anchor, t) };
     update(); e.preventDefault();
   };
-  const end = () => { dragging = false; };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    // Nur getippt statt gezogen? Dann ist das keine Auswahl, sondern der
+    // Wunsch, ab dieser Stelle zu hören.
+    if (st.sel && st.sel.end - st.sel.start < 0.2) {
+      const ab = st.sel.start;
+      st.sel = null;
+      update();
+      waveAbspielen(partId, ab, null);
+    }
+  };
 
   cv.addEventListener('pointerdown', start);
   cv.addEventListener('pointermove', moveTo);
   window.addEventListener('pointerup', end);
+
+  playSel.addEventListener('click', () => {
+    if (st.sel) waveAbspielen(partId, st.sel.start, st.sel.end);
+  });
+
+  // So klingt es NACH dem Schnitt: kurz davor anspielen, über die Auswahl
+  // hinwegspringen, kurz danach weiterhören. Damit hört man die Naht, bevor
+  // man sie macht – und nicht erst, wenn die Aufnahme schon beschnitten ist.
+  playCut.addEventListener('click', () => {
+    if (!st.sel) return;
+    const RAND = 3; // Sekunden vor und nach dem Schnitt
+    waveAbspielen(partId, Math.max(0, st.sel.start - RAND), null, {
+      ab: st.sel.start,
+      nach: st.sel.end,
+      bis: Math.min(st.duration, st.sel.end + RAND),
+    });
+  });
+
+  stopBtn.addEventListener('click', () => waveStoppen(partId));
 
   clearBtn.addEventListener('click', () => { st.sel = null; update(); });
 
@@ -1428,6 +1563,7 @@ function wireWave(episodeId, partId) {
     if (!st.sel) return;
     const len = (st.sel.end - st.sel.start).toFixed(1);
     if (!confirm(`${len} Sekunden herausschneiden (${fmtClock(st.sel.start)} – ${fmtClock(st.sel.end)})?`)) return;
+    waveStoppen(partId); // sonst spielt das Vorhören über den Schnitt hinaus weiter
     cutBtn.disabled = true; cutBtn.innerHTML = '<span class="spinner"></span> Schneidet …';
     try {
       await api(`/api/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/cut`, {
