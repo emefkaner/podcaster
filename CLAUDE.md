@@ -257,6 +257,28 @@ Wichtig: In `SETUP-WERTE.md` stehen **keine** R2-Schlüssel (nur Bucket,
 Account-ID, öffentliche Adresse). Ohne Schlüssel kein Zugriff auf die Bilder im
 Speicher, obwohl der Endpunkt erreichbar wäre.
 
+## Login: aktiv, das 30-Tage-Cookie ist kein Fehler (geprüft 11.08.2026)
+
+Der Nutzer kommt ohne Passwortabfrage auf `cinespasten.emefka.com`. **Das ist
+richtig so** — nicht wieder als Defekt untersuchen.
+
+Von außen gegen die laufende Installation geprüft, ohne Cookie:
+
+| Aufruf | Ergebnis |
+|---|---|
+| `/`, `/settings`, `/episode/…` | 302 → `/login` |
+| `/api/episodes` | 401 `{"error":"Nicht angemeldet"}` |
+| Login mit falschem **und** mit leerem Passwort | 401 `Falsches Passwort` |
+
+Grund fürs Durchkommen: `issueCookie()` setzt ein signiertes Cookie mit
+**30 Tagen** Laufzeit (`httpOnly`, `sameSite=lax`, `secure` bei HTTPS). Ein
+leeres `APP_PASSWORD` öffnet nichts, sondern lehnt **jede** Anmeldung ab
+(`checkPassword` gibt dann immer `false`).
+
+Gegenprobe für den Nutzer: privates Fenster öffnen. Abmelden über ☰ →
+„↩️ Abmelden". Bekannte Grenze: Die 30 Tage laufen ab dem **Anmelden**, nicht
+ab der letzten Nutzung, und Sitzungen lassen sich nicht zentral entwerten.
+
 ## Wellenform-Editor: Zoom und Vorhören (08/2026)
 
 - **Auflösung:** `generatePeaks` liefert jetzt **8 Werte je Sekunde** statt
