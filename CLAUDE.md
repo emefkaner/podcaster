@@ -312,6 +312,58 @@ gleichen sich die Teile aneinander an. Achtung: Damit ist der schnelle
 Stream-Copy-Weg praktisch immer aus; auf Renders kleiner CPU dauert das Bauen
 entsprechend. Am Rechner („Auf diesem Gerät") ist es kein Thema.
 
+## Feed-Zwischenspeicher: Render lief sich mit Instanzstunden fest (27.09.2026)
+
+Render meldete 617 von 750 Gratis-Instanzstunden verbraucht, bei Tag 26 des
+Monats — macht ~23,7 Std./Tag, also praktisch durchgehend wach. In Renders
+eigener Doku nachgelesen (`render.com/docs/free`, von hier aus erreichbar),
+nicht vermutet: Ein Gratis-Webdienst schläft nach **15 Minuten ohne Aufruf**
+ein, **jede** eingehende Anfrage weckt ihn sofort wieder, und die Stunde läuft,
+solange er wach ist — unabhängig davon, wie schnell die Antwort ist. Zwischen-
+speichern **innerhalb** der App (den Feed im Speicher halten) hätte daran
+nichts geändert, weil die Anfrage trotzdem bei Render ankommen muss.
+
+**Wer genau so oft anfragt, ist von hier nicht zu sehen** — `cinespasten.
+emefka.com` ist gesperrt, Render-Logs sind von hier nicht einsehbar. Die Zahl
+belegt nur, dass irgendetwas öfter als alle 15 Minuten anfragt (Apple-/
+Spotify-Crawler, einzelne Podcast-Apps, oder auch ein vergessener Uptime-
+Monitor). Will der Nutzer das genau wissen, nur über Renders eigenes
+Dashboard → Logs zu klären.
+
+**Gebaut: ein Cloudflare Worker vor `/feed.xml`**, Code und Anleitung unter
+`cloudflare/`. Kein Eingriff in DNS/E-Mail nötig (bewusst gegen „Cloudflare vor
+die ganze Domain" entschieden — hätte `emefka.com` komplett auf Cloudflare-DNS
+umziehen verlangt, inklusive der E-Mail-Einträge bei Strato, echtes
+Ausfallrisiko).
+
+Zwei Wege, wie der Zwischenspeicher aktuell bleibt (Idee vom Nutzer, treffender
+als mein ursprünglicher fester 10-Minuten-Timer):
+
+1. **Aktiv:** `writeJson()` in `src/store.js` ruft nach jeder Änderung an
+   Folgen/Einstellungen `FEED_MIRROR_PURGE_URL` auf (fire-and-forget). Render
+   ist in dem Moment ohnehin wach, kostet also nichts zusätzlich. Deckt den
+   Normalfall „ich habe etwas veröffentlicht/geändert" sofort ab.
+2. **Passiv, als Rückfall:** ohne Leerung hält der Worker den Feed 60 Minuten,
+   danach holt der **nächste tatsächliche Aufruf** einmal frisch nach — nie
+   von selbst. Fängt eine eingeplante Folge auf, die ohne Zutun des Nutzers
+   fällig wird.
+
+**Wichtige Stellschraube, selbst durchgerechnet:** Die 60 Minuten (vorher
+fälschlich 10 Minuten vorgeschlagen) müssen **größer als Renders 15-Minuten-
+Schwelle** sein. Holt der Worker öfter als alle 15 Minuten nach, bekommt Render
+nie eine Lücke zum Einschlafen und das Problem ist unverändert da — genau der
+Fehler, den ich zuerst gemacht hatte, bevor ich es zu Ende durchgerechnet habe.
+
+`config.feedMirrorUrl` (env `FEED_MIRROR_URL`) trägt `<itunes:new-feed-url>`
+in den Feed ein, `config.feedMirrorPurgeUrl` (env `FEED_MIRROR_PURGE_URL`)
+löst die Leerung aus. Beide leer = Verhalten unverändert wie vorher, geprüft
+im Rauchtest (33/33, mit und ohne gesetzte Variable).
+
+**Ungeprüft von hier aus:** ob der Worker in echt wie gedacht cached (keine
+Cloudflare-Umgebung hier verfügbar), und ob die 60 Minuten in der Praxis
+reichen, damit Render tatsächlich öfter einschläft — das zeigt sich erst an
+Renders eigener Instanzstunden-Anzeige nach ein paar Tagen Betrieb.
+
 ## Gäste: gehören an die FOLGE, nicht in die Einstellungen
 
 Die Stammbesetzung steht global unter `settings.crew`. Ein Gast darf da **nicht**

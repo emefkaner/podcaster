@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { paths, defaultSettings } from './config.js';
+import { config, paths, defaultSettings } from './config.js';
 import { storageEnabled, putJson, getJson, publicUrl } from './storage.js';
 
 // Sehr einfache "Datenbank": zwei JSON-Dateien.
@@ -27,6 +27,12 @@ function writeJson(file, data) {
   const key = R2_KEYS[file];
   if (key && storageEnabled()) {
     putJson(key, data).catch((e) => console.error('R2-Backup fehlgeschlagen:', e.message));
+  }
+  // Episoden oder Einstellungen geändert → vorgeschalteten Feed-Zwischenspeicher
+  // sofort leeren (fire-and-forget). So muss eine echte Änderung nicht erst auf
+  // dessen Rückfall-Timer warten; Render ist in diesem Moment ohnehin wach.
+  if (key && config.feedMirrorPurgeUrl) {
+    fetch(config.feedMirrorPurgeUrl).catch((e) => console.error('Feed-Cache-Leerung fehlgeschlagen:', e.message));
   }
 }
 

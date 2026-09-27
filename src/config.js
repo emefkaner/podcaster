@@ -44,6 +44,15 @@ export const config = {
     email: process.env.ANCHOR_EMAIL || '',
     password: process.env.ANCHOR_PASSWORD || '',
   },
+  // Adresse eines vorgeschalteten Zwischenspeichers (z. B. Cloudflare Worker),
+  // der /feed.xml übernimmt. Gesetzt = im Feed erscheint <itunes:new-feed-url>,
+  // damit Podcast-Verzeichnisse dorthin umziehen. Siehe cloudflare/README.md.
+  feedMirrorUrl: process.env.FEED_MIRROR_URL || '',
+  // Adresse, die den Zwischenspeicher des Worker sofort leert (dessen
+  // /purge-Pfad inkl. Geheimnis). Wird nach jeder Änderung an Folgen/
+  // Einstellungen aufgerufen, damit eine echte Änderung nicht erst auf den
+  // Rückfall-Timer warten muss. Leer = kein Aufruf.
+  feedMirrorPurgeUrl: process.env.FEED_MIRROR_PURGE_URL || '',
   // Cloudflare R2 (S3-kompatibel). Alle Felder nötig, sonst lokaler Fallback.
   r2: {
     accountId: process.env.R2_ACCOUNT_ID || '',

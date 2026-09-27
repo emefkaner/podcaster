@@ -87,6 +87,7 @@ ${e.imageUrl ? `      <itunes:image href="${esc(e.imageUrl)}"/>\n` : ''}    </it
     <itunes:explicit>${s.explicit ? 'true' : 'false'}</itunes:explicit>
     <itunes:category text="${esc(s.category || 'Society & Culture')}"/>
     ${coverUrl ? `<itunes:image href="${esc(coverUrl)}"/>` : ''}
+    ${config.feedMirrorUrl ? `<itunes:new-feed-url>${esc(config.feedMirrorUrl)}</itunes:new-feed-url>` : ''}
     <itunes:owner>
       <itunes:name>${esc(s.ownerName)}</itunes:name>
       <itunes:email>${esc(s.ownerEmail)}</itunes:email>
