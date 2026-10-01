@@ -9,3 +9,9 @@ data/
 # Ausgeschnittene Gesichter aus den Cover-Vorlagen. Nur Arbeitsmaterial fuer
 # die Bilderzeugung - gehoert nicht ins oeffentliche Repo.
 gesichter/
+
+# Lokal ausgefuellte Kopie des Feed-Skripts (enthaelt das Geheimnis) und das
+# Geheimnis selbst. Die Repo-Fassung strato/feed-refresh.php behaelt den
+# Platzhalter. Das Repo ist oeffentlich - diese Dateien duerfen nie hinein.
+strato/*.local.php
+strato/GEHEIMNIS.txt
