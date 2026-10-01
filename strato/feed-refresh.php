@@ -27,9 +27,16 @@ if (GEHEIMNIS === 'HIER-EIN-LANGES-ZUFALLSWORT-EINTRAGEN') {
     http_response_code(500);
     exit("Geheimnis in feed-refresh.php noch nicht eingetragen\n");
 }
-if (!isset($_GET['secret']) || !hash_equals(GEHEIMNIS, (string) $_GET['secret'])) {
+$erhalten = (string) ($_GET['secret'] ?? '');
+if (!hash_equals(GEHEIMNIS, $erhalten)) {
+    // Längen nennen, nicht die Werte: So sieht man Tippfehler und abgeschnittene
+    // Adressen sofort, ohne dass das Geheimnis selbst irgendwo auftaucht.
+    $hinweis = str_contains($erhalten, ' ')
+        ? ' — enthält ein Leerzeichen: ein „+" in der Adresse wird zum Leerzeichen, Geheimnis ohne Sonderzeichen wählen'
+        : '';
     http_response_code(403);
-    exit("Falsches oder fehlendes Geheimnis\n");
+    exit('Falsches oder fehlendes Geheimnis (angekommen: ' . strlen($erhalten)
+        . ' Zeichen, in der Datei: ' . strlen(GEHEIMNIS) . " Zeichen)$hinweis\n");
 }
 
 // Mit curl statt file_get_contents: allow_url_fopen ist auf Shared Hosting nicht
