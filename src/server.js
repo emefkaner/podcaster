@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config, paths } from './config.js';
 import { issueCookie, clearCookie, isLoggedIn, checkPassword } from './auth.js';
 import { buildFeed } from './rss.js';
-import { initStore, pruefeFaelligeFolgen } from './store.js';
+import { initStore, pruefeFaelligeFolgen, feedSpiegelAuffrischen } from './store.js';
 import { seedAssets } from './seed.js';
 import { haengendeFolgenFreigeben } from './recover.js';
 import { storageEnabled } from './storage.js';
@@ -116,5 +116,10 @@ initStore()
       console.log(`RSS-Feed:         ${config.publicUrl}/feed.xml`);
       console.log(`Speicher:         ${storageEnabled() ? 'Cloudflare R2' : 'lokal (DATA_DIR)'}`);
       if (!config.password) console.warn('WARNUNG: APP_PASSWORD ist nicht gesetzt – Login nicht möglich.');
+      // Nach jedem Start (Deploy, Neustart) die statische Feed-Kopie einmal
+      // auffrischen lassen — Render ist gerade ohnehin wach. Fängt den Fall ab,
+      // dass ein früheres Auffrischen still fehlgeschlagen ist. Muss NACH
+      // listen() passieren: Das Skript ruft hier /feed.xml zurück.
+      feedSpiegelAuffrischen('Serverstart');
     });
   });

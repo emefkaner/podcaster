@@ -168,9 +168,11 @@ klassisches Webspace-Paket** (Screenshot: Menü „Datenbanken und Webspace" mit
 dauerlaufenden Server** — Strato selbst verkauft Node-Hosting nur als
 V-/Dedicated-Server mit Root. SSH dort heißt nur Dateizugriff und Befehle,
 nicht „eigener Server": Es gibt keinen Weg, die Domain auf einen eigenen
-Prozess zu leiten (Apache/PHP fest verdrahtet). **Umzug dorthin fällt aus;
-nicht wieder aufrollen.** Was der Webspace könnte (statische Dateien
-ausliefern), brauchen wir nicht — Audio liegt schon gratis auf R2.
+Prozess zu leiten (Apache/PHP fest verdrahtet). **Umzug der App dorthin fällt
+aus; nicht wieder aufrollen.** Hier stand früher „statische Dateien ausliefern
+brauchen wir nicht" — **das war zu kurz gedacht** (korrigiert 01.10.2026): Genau
+das ist seit dem Feed-Umbau die Aufgabe des Webspace, siehe Abschnitt
+„Feed-Zwischenspeicher" unten. Audio bleibt auf R2.
 
 Erster Sparumbau GEBAUT: `vendor/` (31 MB ffmpeg.wasm) und `assets/` werden
 mit `maxAge: 30d` ausgeliefert. Bei einem ffmpeg-Update deshalb die
@@ -330,42 +332,63 @@ Spotify-Crawler, einzelne Podcast-Apps, oder auch ein vergessener Uptime-
 Monitor). Will der Nutzer das genau wissen, nur über Renders eigenes
 Dashboard → Logs zu klären.
 
-**Gebaut: ein Cloudflare Worker vor `/feed.xml`**, Code und Anleitung unter
-`cloudflare/`. Kein Eingriff in DNS/E-Mail nötig (bewusst gegen „Cloudflare vor
-die ganze Domain" entschieden — hätte `emefka.com` komplett auf Cloudflare-DNS
-umziehen verlangt, inklusive der E-Mail-Einträge bei Strato, echtes
-Ausfallrisiko).
+**Gebaut (Stand 01.10.2026): eine statische Feed-Kopie auf dem Strato-Webspace**
+— `strato/feed-refresh.php` plus Anleitung in `strato/README.md`. Der
+„Pförtner" ist eine schlichte Datei `www.emefka.com/cinespasten/feed.xml`, die
+Apache ausliefert; das PHP-Skript daneben holt auf Zuruf der App den Feed von
+Render und schreibt die Datei neu. Die App selbst kann das Problem nicht lösen,
+weil ihr Code erst läuft, nachdem Render schon geweckt ist — es braucht etwas
+**vor** Render.
 
-Drei Wege, wie der Zwischenspeicher aktuell bleibt (mehrfach mit dem Nutzer
-nachgeschärft, jedes Mal treffender als mein vorheriger Vorschlag):
+Vorgeschichte, damit sie niemand wiederholt: Zuerst ein Cloudflare Worker
+(`cloudflare/`, inzwischen gelöscht, in der Git-Historie bis `6fd2d97`). Der
+Nutzer fand die Einrichtung zu umständlich und fragte nach, ob es nicht im
+eigenen Strato-Webspace ginge — zu Recht. Geprüft am 01.10.: `www.emefka.com`
+antwortet über HTTPS mit gültigem Zertifikat (Apache 2.4); Stratos
+Paketvergleich nennt PHP 8.4, Perl und SSH/SFTP in allen Paketen, Python ab dem
+zweiten (der Nutzer hat beides). **PHP statt Python**, weil Apache `.php`
+direkt ausführt, Python dort aber als CGI liefe (Ausführrechte, Interpreter-
+Pfad, Handler — drei Stellen für ein nacktes „500"). Den Feed direkt auf R2 zu
+legen wurde verworfen: Cloudflares Doku nennt `r2.dev` „rate-limited",
+„development purposes only", „cannot guarantee consistent reliability" — nicht
+für die eine Adresse, die nie zicken darf. (Dass die MP3s dort liegen, ist
+dieselbe Schwachstelle, aber ein eigenes Thema.)
 
-1. **Aktiv bei Änderung:** `writeJson()` in `src/store.js` ruft nach jeder
-   Änderung an Folgen/Einstellungen `FEED_MIRROR_PURGE_URL` auf
-   (fire-and-forget). Render ist in dem Moment ohnehin wach, kostet also
-   nichts zusätzlich. Deckt den Normalfall „ich habe etwas
-   veröffentlicht/geändert" sofort ab.
-2. **Aktiv bei bloßem Seitenaufruf (01.10.2026 nachgerüstet):**
-   `pruefeFaelligeFolgen()` in `src/store.js`, aus einer Express-Middleware in
-   `src/server.js` bei JEDEM Aufruf ausgeführt. Prüft, ob eine eingeplante
-   Folge inzwischen fällig geworden ist, und leert in dem Fall ebenfalls —
-   auch ohne dass der Nutzer etwas speichert. Grund: Der Nutzer wollte
-   ausdrücklich, dass Render **nur** durch eigene Nutzung aufwacht (auch
-   bloßes Aufrufen der Seite zählt), nie durch fremde Feed-Abfragen von außen.
-   Ein Modul-Merker (`faelligkeitPurgeStand`) verhindert, dass dieselbe fällige
-   Folge bei jedem weiteren Aufruf erneut leert — geprüft: zweiter Aufruf nach
-   derselben Fälligkeit löst keinen weiteren `/purge`-Aufruf mehr aus.
-3. **Passiv, nur noch als Sicherheitsnetz:** Ohne jede Leerung hält der Worker
-   den Feed **7 Tage** (`CACHE_SEKUNDEN` in `cloudflare/feed-cache-worker.js`),
-   falls Weg 1 oder 2 einmal stumm fehlschlägt (falsches Geheimnis, Worker kurz
-   down). Im Normalbetrieb sollte dieser Fall nie eintreten.
+Drei Auslöser, die die Kopie auffrischen — alle nur, wenn Render ohnehin wach
+ist. **Kein** Zeitnetz, das von selbst nachholt (das würde Render wecken):
 
-**Chronologie der Zahl, damit sie nicht wieder aus Versehen verkleinert wird:**
-Erst 10 Minuten vorgeschlagen (falsch — kleiner als Renders 15-Minuten-Schwelle,
-hätte gar nichts gebracht). Dann 60 Minuten (richtig gerechnet, aber noch zu
-kurz für das, was der Nutzer wollte: Render soll tagelang durchschlafen dürfen).
-Dann 48 Stunden (an eine genannte Obergrenze für Vorlaufzeit angelehnt). Jetzt,
-mit Weg 2 gebaut, ist die Zahl kein Haupt-Mechanismus mehr, sondern nur noch
-Sicherheitsnetz — deshalb bewusst lang (7 Tage) statt knapp bemessen.
+1. **Bei Änderung:** `writeJson()` in `src/store.js` ruft nach jeder Änderung
+   an Folgen/Einstellungen `feedSpiegelAuffrischen('Änderung')` auf → GET auf
+   `FEED_MIRROR_PURGE_URL` (fire-and-forget, HTTP-Fehler landen mit Anlass im
+   Log). Deckt „ich habe etwas veröffentlicht/geändert" sofort ab.
+2. **Bei bloßem Seitenaufruf:** `pruefeFaelligeFolgen()` in `src/store.js`,
+   aus einer Express-Middleware in `src/server.js` bei JEDEM Aufruf. Prüft, ob
+   eine eingeplante Folge inzwischen fällig geworden ist, und frischt dann auf
+   — auch ohne Speichern. Grund: Der Nutzer wollte ausdrücklich, dass Render
+   **nur** durch eigene Nutzung aufwacht (bloßes Aufrufen der Seite zählt), nie
+   durch fremde Feed-Abfragen. Ein Modul-Merker (`faelligkeitStand`)
+   verhindert, dass dieselbe fällige Folge bei jedem Aufruf erneut auslöst —
+   geprüft: zweiter Aufruf nach derselben Fälligkeit löst nichts mehr aus.
+3. **Beim Serverstart:** im `listen()`-Callback in `src/server.js`
+   (`feedSpiegelAuffrischen('Serverstart')`). Ersetzt das frühere Zeitnetz:
+   Ist ein Auffrischen still fehlgeschlagen, holt es der nächste Deploy/
+   Neustart nach. Muss NACH `listen()` stehen — das Skript ruft `/feed.xml`
+   zurück. Beim Start löst zusätzlich `seedAssets()` → `saveSettings` einmal
+   Weg 1 aus; harmlos, nicht als Fehler deuten.
+
+**Lokal durchgespielt am 01.10.2026** (PHP 8.4 mit curl ist im Sandkasten da;
+App auf 3998 als „Render", `php -S` als „Strato", `URSPRUNG`/`GEHEIMNIS` per
+`sed` umgebogen): Serverstart erzeugt `feed.xml`; falsches Geheimnis → 403;
+Platzhalter nicht ersetzt → 500; Erfolg → `ok 1273 Bytes`; Titel per
+`PUT /api/settings` geändert → Kopie trägt den neuen Titel; Ursprung auf eine
+HTML-Seite umgebogen → 502 und Kopie **unverändert** (die `<?xml`/`</rss>`-
+Prüfung im Skript). Beim Testen: `NO_PROXY=127.0.0.1` setzen, sonst versucht
+PHPs curl den Sandkasten-Proxy.
+
+**Chronologie der Zeitnetz-Zahl, damit niemand sie wieder einführt:** 10 Min
+(falsch — unter Renders 15-Minuten-Schwelle, wirkungslos) → 60 Min → 48 h →
+7 Tage → **gestrichen**. Jedes Zeitnetz weckt Render ohne Zutun des Nutzers;
+Weg 3 (Serverstart) ersetzt es kostenlos.
 
 **Zwischenstand 01.10.2026:** Render meldete erneut eine Warnung (696 von 750
 Stunden) — der Nutzer hatte die Cloudflare-Einrichtung aus `cloudflare/
@@ -384,20 +407,25 @@ nötig. Falls der Nutzer das doch will: `render.yaml`s `plan: free` müsste dann
 ebenfalls auf `0.5c-512mb` geändert werden, sonst fällt ein künftiger
 Blueprint-Sync eventuell auf „free" zurück.
 
-`config.feedMirrorUrl` (env `FEED_MIRROR_URL`) trägt `<itunes:new-feed-url>`
-in den Feed ein, `config.feedMirrorPurgeUrl` (env `FEED_MIRROR_PURGE_URL`)
-löst beide Leerungswege aus. Beide leer = Verhalten unverändert wie vorher,
-geprüft im Rauchtest (33/33, mit und ohne gesetzte Variable).
+`config.feedMirrorUrl` (env `FEED_MIRROR_URL`, die Adresse der Kopie) trägt
+`<itunes:new-feed-url>` in den Feed ein; `config.feedMirrorPurgeUrl` (env
+`FEED_MIRROR_PURGE_URL`, das Skript inkl. `?secret=`) ist das Ziel aller drei
+Auslöser. Der Name „PURGE" stammt noch vom Worker — bewusst nicht umbenannt,
+damit die Render-Variablen bleiben. Beide leer = Verhalten unverändert wie
+vorher (Rauchtest 33/33).
 
-**Ungeprüft von hier aus:** ob der Worker in echt wie gedacht cached (keine
-Cloudflare-Umgebung hier verfügbar), und ob Render dadurch tatsächlich so
-selten wach wird wie gerechnet — das zeigt sich erst an Renders eigener
-Instanzstunden-Anzeige, UND erst nachdem der Nutzer die Einrichtung aus
-`cloudflare/README.md` tatsächlich durchgeführt hat. Auch ungeprüft: ob ein
-Origin-Abruf des Worker Renders Aufwach-Verzögerung (laut Renders Doku
-~1 Minute) klaglos übersteht — im Zweifel liefert der Worker dann einmalig
-einen Fehler und der nächste Aufruf holt erneut nach, statt den Fehler
-zwischenzuspeichern.
+**Das Geheimnis steht im Skript** (`const GEHEIMNIS`), der Nutzer trägt es vor
+dem Hochladen ein; die Repo-Fassung behält den Platzhalter und verweigert damit
+jede Arbeit (HTTP 500). Die ausgefüllte Datei darf nie ins Repo — `podcaster`
+ist öffentlich.
+
+**Ungeprüft von hier aus:** Stratos tatsächliche PHP-Konfiguration (curl-
+Erweiterung, Schreibrechte, ausgehende Verbindungen vom Webspace), die
+Beschriftungen im Strato-Kundenbereich (Hilfeseiten laden nur mit JavaScript),
+und ob Renders Instanzstunden dann wirklich sinken — das zeigt erst Renders
+Dashboard, UND erst nachdem der Nutzer die Feed-Adresse bei Spotify/Apple
+umgestellt hat (Schritte 11/12 in `strato/README.md`). Ohne diesen letzten
+Schritt klingeln die Verzeichnisse weiter bei Render, egal was gebaut ist.
 
 ## Gäste: gehören an die FOLGE, nicht in die Einstellungen
 

@@ -28,36 +28,46 @@ function writeJson(file, data) {
   if (key && storageEnabled()) {
     putJson(key, data).catch((e) => console.error('R2-Backup fehlgeschlagen:', e.message));
   }
-  // Episoden oder Einstellungen geändert → vorgeschalteten Feed-Zwischenspeicher
-  // sofort leeren (fire-and-forget). So muss eine echte Änderung nicht erst auf
-  // dessen Rückfall-Timer warten; Render ist in diesem Moment ohnehin wach.
-  if (key && config.feedMirrorPurgeUrl) {
-    fetch(config.feedMirrorPurgeUrl).catch((e) => console.error('Feed-Cache-Leerung fehlgeschlagen:', e.message));
-  }
+  // Episoden oder Einstellungen geändert → die statische Feed-Kopie auf dem
+  // Webspace sofort auffrischen lassen. Render ist in diesem Moment ohnehin wach.
+  if (key) feedSpiegelAuffrischen('Änderung');
 }
 
-// Zuletzt gefundene Fälligkeitszeit, für die schon geleert wurde — verhindert
-// wiederholtes Leeren bei jedem Seitenaufruf, solange dieselbe Folge fällig ist.
-let faelligkeitPurgeStand = 0;
+// Stößt das Auffrischen der statischen Feed-Kopie an (strato/feed-refresh.php):
+// Das Skript dort holt sich daraufhin den aktuellen Feed von dieser App und legt
+// ihn als Datei ab. Fire-and-forget — ein Fehler landet nur im Protokoll, mit
+// Anlass, damit man ihn im Render-Log zuordnen kann. Ohne gesetzte Adresse
+// passiert nichts (Verhalten wie vor dem Umbau).
+export function feedSpiegelAuffrischen(anlass) {
+  if (!config.feedMirrorPurgeUrl) return;
+  fetch(config.feedMirrorPurgeUrl)
+    .then((r) => { if (!r.ok) console.error(`Feed-Spiegel auffrischen (${anlass}) fehlgeschlagen: HTTP ${r.status}`); })
+    .catch((e) => console.error(`Feed-Spiegel auffrischen (${anlass}) fehlgeschlagen:`, e.message));
+}
+
+// Zuletzt gefundene Fälligkeitszeit, für die schon aufgefrischt wurde —
+// verhindert wiederholtes Auffrischen bei jedem Seitenaufruf, solange dieselbe
+// Folge fällig ist.
+let faelligkeitStand = 0;
 
 // Beiläufige Prüfung bei JEDEM Seitenaufruf (aus server.js aufgerufen): ist eine
-// EINGEPLANTE Folge seit dem letzten Aufruf fällig geworden? Dann den
-// Feed-Zwischenspeicher leeren. Render ist durch den gerade laufenden Aufruf
-// ohnehin wach — das kostet nichts zusätzlich. So wacht Render nur noch durch
-// eigene Nutzung auf (Speichern ODER bloßes Aufrufen der Seite), nie durch
-// fremde Feed-Abfragen von außen. Siehe cloudflare/feed-cache-worker.js.
+// EINGEPLANTE Folge seit dem letzten Aufruf fällig geworden? Dann die
+// Feed-Kopie auffrischen. Render ist durch den gerade laufenden Aufruf ohnehin
+// wach — das kostet nichts zusätzlich. So wacht Render nur noch durch eigene
+// Nutzung auf (Speichern ODER bloßes Aufrufen der Seite), nie durch fremde
+// Feed-Abfragen von außen. Siehe strato/README.md.
 export function pruefeFaelligeFolgen() {
   if (!config.feedMirrorPurgeUrl) return;
   const jetzt = Date.now();
-  let neuerStand = faelligkeitPurgeStand;
+  let neuerStand = faelligkeitStand;
   for (const e of listEpisodes()) {
     if (e.status !== 'published' || !e.publishedAt) continue;
     const t = new Date(e.publishedAt).getTime();
-    if (!isNaN(t) && t <= jetzt && t > faelligkeitPurgeStand) neuerStand = Math.max(neuerStand, t);
+    if (!isNaN(t) && t <= jetzt && t > faelligkeitStand) neuerStand = Math.max(neuerStand, t);
   }
-  if (neuerStand === faelligkeitPurgeStand) return; // nichts neu Fälliges
-  faelligkeitPurgeStand = neuerStand;
-  fetch(config.feedMirrorPurgeUrl).catch((e) => console.error('Feed-Cache-Leerung (fällige Folge) fehlgeschlagen:', e.message));
+  if (neuerStand === faelligkeitStand) return; // nichts neu Fälliges
+  faelligkeitStand = neuerStand;
+  feedSpiegelAuffrischen('fällige Folge');
 }
 
 // Beim Start: fehlt eine lokale JSON-Datei (z. B. neuer Container ohne Volume),

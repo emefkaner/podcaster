@@ -40,11 +40,11 @@ services:
         sync: false
       - key: R2_PUBLIC_URL
         sync: false          # öffentliche Bucket-URL, z. B. https://pub-xxxx.r2.dev
-      # ---- Cloudflare Worker vor /feed.xml (optional, siehe cloudflare/README.md) ----
+      # ---- Statische Feed-Kopie auf dem Strato-Webspace (optional, siehe strato/README.md) ----
       - key: FEED_MIRROR_URL
-        sync: false          # z. B. https://podcast3r-feed.<konto>.workers.dev/feed.xml
+        sync: false          # z. B. https://www.emefka.com/cinespasten/feed.xml
       - key: FEED_MIRROR_PURGE_URL
-        sync: false          # z. B. https://podcast3r-feed.<konto>.workers.dev/purge?secret=…
+        sync: false          # z. B. https://www.emefka.com/cinespasten/feed-refresh.php?secret=…
       # ---- Spotify for Podcasters / Anchor (optionaler Direkt-Push) ----
       - key: ANCHOR_EMAIL
         sync: false
