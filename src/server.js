@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config, paths } from './config.js';
 import { issueCookie, clearCookie, isLoggedIn, checkPassword } from './auth.js';
 import { buildFeed } from './rss.js';
-import { initStore } from './store.js';
+import { initStore, pruefeFaelligeFolgen } from './store.js';
 import { seedAssets } from './seed.js';
 import { haengendeFolgenFreigeben } from './recover.js';
 import { storageEnabled } from './storage.js';
@@ -21,6 +21,12 @@ const app = express();
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.disable('x-powered-by');
+
+// Bei jedem Aufruf beiläufig prüfen, ob eine eingeplante Folge inzwischen fällig
+// geworden ist — Render ist für diesen Aufruf ohnehin wach, das kostet nichts
+// zusätzlich. So braucht es keinen eigenen Hintergrund-Timer, der Render auch
+// ohne jede Nutzung regelmäßig aufwecken würde. Siehe pruefeFaelligeFolgen().
+app.use((req, res, next) => { pruefeFaelligeFolgen(); next(); });
 
 // ---- Öffentliche Endpunkte (kein Login nötig) ----
 

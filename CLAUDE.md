@@ -336,33 +336,68 @@ die ganze Domain" entschieden — hätte `emefka.com` komplett auf Cloudflare-DN
 umziehen verlangt, inklusive der E-Mail-Einträge bei Strato, echtes
 Ausfallrisiko).
 
-Zwei Wege, wie der Zwischenspeicher aktuell bleibt (Idee vom Nutzer, treffender
-als mein ursprünglicher fester 10-Minuten-Timer):
+Drei Wege, wie der Zwischenspeicher aktuell bleibt (mehrfach mit dem Nutzer
+nachgeschärft, jedes Mal treffender als mein vorheriger Vorschlag):
 
-1. **Aktiv:** `writeJson()` in `src/store.js` ruft nach jeder Änderung an
-   Folgen/Einstellungen `FEED_MIRROR_PURGE_URL` auf (fire-and-forget). Render
-   ist in dem Moment ohnehin wach, kostet also nichts zusätzlich. Deckt den
-   Normalfall „ich habe etwas veröffentlicht/geändert" sofort ab.
-2. **Passiv, als Rückfall:** ohne Leerung hält der Worker den Feed 60 Minuten,
-   danach holt der **nächste tatsächliche Aufruf** einmal frisch nach — nie
-   von selbst. Fängt eine eingeplante Folge auf, die ohne Zutun des Nutzers
-   fällig wird.
+1. **Aktiv bei Änderung:** `writeJson()` in `src/store.js` ruft nach jeder
+   Änderung an Folgen/Einstellungen `FEED_MIRROR_PURGE_URL` auf
+   (fire-and-forget). Render ist in dem Moment ohnehin wach, kostet also
+   nichts zusätzlich. Deckt den Normalfall „ich habe etwas
+   veröffentlicht/geändert" sofort ab.
+2. **Aktiv bei bloßem Seitenaufruf (01.10.2026 nachgerüstet):**
+   `pruefeFaelligeFolgen()` in `src/store.js`, aus einer Express-Middleware in
+   `src/server.js` bei JEDEM Aufruf ausgeführt. Prüft, ob eine eingeplante
+   Folge inzwischen fällig geworden ist, und leert in dem Fall ebenfalls —
+   auch ohne dass der Nutzer etwas speichert. Grund: Der Nutzer wollte
+   ausdrücklich, dass Render **nur** durch eigene Nutzung aufwacht (auch
+   bloßes Aufrufen der Seite zählt), nie durch fremde Feed-Abfragen von außen.
+   Ein Modul-Merker (`faelligkeitPurgeStand`) verhindert, dass dieselbe fällige
+   Folge bei jedem weiteren Aufruf erneut leert — geprüft: zweiter Aufruf nach
+   derselben Fälligkeit löst keinen weiteren `/purge`-Aufruf mehr aus.
+3. **Passiv, nur noch als Sicherheitsnetz:** Ohne jede Leerung hält der Worker
+   den Feed **7 Tage** (`CACHE_SEKUNDEN` in `cloudflare/feed-cache-worker.js`),
+   falls Weg 1 oder 2 einmal stumm fehlschlägt (falsches Geheimnis, Worker kurz
+   down). Im Normalbetrieb sollte dieser Fall nie eintreten.
 
-**Wichtige Stellschraube, selbst durchgerechnet:** Die 60 Minuten (vorher
-fälschlich 10 Minuten vorgeschlagen) müssen **größer als Renders 15-Minuten-
-Schwelle** sein. Holt der Worker öfter als alle 15 Minuten nach, bekommt Render
-nie eine Lücke zum Einschlafen und das Problem ist unverändert da — genau der
-Fehler, den ich zuerst gemacht hatte, bevor ich es zu Ende durchgerechnet habe.
+**Chronologie der Zahl, damit sie nicht wieder aus Versehen verkleinert wird:**
+Erst 10 Minuten vorgeschlagen (falsch — kleiner als Renders 15-Minuten-Schwelle,
+hätte gar nichts gebracht). Dann 60 Minuten (richtig gerechnet, aber noch zu
+kurz für das, was der Nutzer wollte: Render soll tagelang durchschlafen dürfen).
+Dann 48 Stunden (an eine genannte Obergrenze für Vorlaufzeit angelehnt). Jetzt,
+mit Weg 2 gebaut, ist die Zahl kein Haupt-Mechanismus mehr, sondern nur noch
+Sicherheitsnetz — deshalb bewusst lang (7 Tage) statt knapp bemessen.
+
+**Zwischenstand 01.10.2026:** Render meldete erneut eine Warnung (696 von 750
+Stunden) — der Nutzer hatte die Cloudflare-Einrichtung aus `cloudflare/
+README.md` zu dem Zeitpunkt noch nicht gemacht (eigene Aussage: „zu stressig"),
+`FEED_MIRROR_URL`/`FEED_MIRROR_PURGE_URL` standen also noch nicht in Renders
+Umgebung. Ohne die beiden Variablen verhält sich die App nachweislich exakt wie
+vorher (Rauchtest 33/33 mit und ohne gesetzte Variable) — die fortlaufende
+Instanzstunden-Zahl war deshalb **kein Fehler im Code**, sondern schlicht noch
+nichts Eingerichtetes. Als Alternative mit weniger Eigenaufwand dem Nutzer
+genannt, aber (Stand hier) nicht gewählt: Renders COMPUTE-Plan (nicht den
+Workspace-Plan) dieses einen Dienstes von „Free" auf „Starter"
+(`0.5c-512mb`, 7 $/Monat) umstellen — entfernt laut Renders eigener Doku
+(`render.com/docs/compute-plans`) sowohl die 15-Minuten-Schlafgrenze als auch
+die 750-Stunden-Grenze vollständig, drei Klicks im Dashboard, kein Cloudflare
+nötig. Falls der Nutzer das doch will: `render.yaml`s `plan: free` müsste dann
+ebenfalls auf `0.5c-512mb` geändert werden, sonst fällt ein künftiger
+Blueprint-Sync eventuell auf „free" zurück.
 
 `config.feedMirrorUrl` (env `FEED_MIRROR_URL`) trägt `<itunes:new-feed-url>`
 in den Feed ein, `config.feedMirrorPurgeUrl` (env `FEED_MIRROR_PURGE_URL`)
-löst die Leerung aus. Beide leer = Verhalten unverändert wie vorher, geprüft
-im Rauchtest (33/33, mit und ohne gesetzte Variable).
+löst beide Leerungswege aus. Beide leer = Verhalten unverändert wie vorher,
+geprüft im Rauchtest (33/33, mit und ohne gesetzte Variable).
 
 **Ungeprüft von hier aus:** ob der Worker in echt wie gedacht cached (keine
-Cloudflare-Umgebung hier verfügbar), und ob die 60 Minuten in der Praxis
-reichen, damit Render tatsächlich öfter einschläft — das zeigt sich erst an
-Renders eigener Instanzstunden-Anzeige nach ein paar Tagen Betrieb.
+Cloudflare-Umgebung hier verfügbar), und ob Render dadurch tatsächlich so
+selten wach wird wie gerechnet — das zeigt sich erst an Renders eigener
+Instanzstunden-Anzeige, UND erst nachdem der Nutzer die Einrichtung aus
+`cloudflare/README.md` tatsächlich durchgeführt hat. Auch ungeprüft: ob ein
+Origin-Abruf des Worker Renders Aufwach-Verzögerung (laut Renders Doku
+~1 Minute) klaglos übersteht — im Zweifel liefert der Worker dann einmalig
+einen Fehler und der nächste Aufruf holt erneut nach, statt den Fehler
+zwischenzuspeichern.
 
 ## Gäste: gehören an die FOLGE, nicht in die Einstellungen
 

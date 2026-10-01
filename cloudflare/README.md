@@ -7,13 +7,26 @@ Fragen Podcast-Verzeichnisse den Feed öfter als alle 15 Minuten ab, bleibt
 Render dauerhaft wach, und die 750 Stunden sind schnell aufgebraucht.
 
 Dieser Worker beantwortet `/feed.xml` stattdessen selbst, aus einem
-Zwischenspeicher:
+Zwischenspeicher. Ausdrücklicher Wunsch: Render soll **nur** durch eigene
+Nutzung aufwachen (etwas speichern, oder auch nur die Seite aufrufen) — nie
+durch fremde Feed-Abfragen von außen. Deshalb:
 
 - **Leert sich sofort**, wenn du in der App etwas veröffentlichst oder änderst
   (`/purge`) — Render ist in dem Moment ohnehin wach, kostet also nichts extra.
-- **Sonst höchstens einmal pro Stunde** neu von Render — und selbst das nur,
-  wenn wirklich jemand fragt, nie von selbst. Das fängt nur den Sonderfall ab,
-  dass eine eingeplante Folge fällig wird, ohne dass du etwas tust.
+- **Leert sich auch bei jedem bloßen Seitenaufruf**, beiläufig: Die App prüft
+  dabei (`pruefeFaelligeFolgen()` in `src/store.js`), ob eine eingeplante
+  Folge inzwischen fällig geworden ist, und leert in dem Fall mit. Reicht also,
+  dass du irgendwann nach dem Termin die App öffnest — kostet ebenfalls
+  nichts extra, Render ist für diesen Aufruf ja ohnehin wach.
+- **Nur als Sicherheitsnetz** hält der Worker den Feed höchstens **7 Tage**,
+  falls die Leerung einmal fehlschlägt (falsches Geheimnis, Worker kurz down).
+  Im Normalbetrieb sollte dieser Fall nie eintreten — fragt in den 7 Tagen
+  niemand den Feed ab, holt auch dieses Sicherheitsnetz nichts nach.
+
+Damit wacht Render im Normalfall **ausschließlich** durch deine eigene Nutzung
+auf. Kann theoretisch noch passieren: Das Sicherheitsnetz greift nur, wenn in
+den 7 Tagen seit der letzten Leerung *und* zufällig genau dann jemand den Feed
+abfragt — in der Praxis sollte das nicht vorkommen.
 
 Der Code liegt in `feed-cache-worker.js`. Cloudflare-Konto braucht ihr wegen R2
 schon.

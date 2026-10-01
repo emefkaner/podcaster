@@ -36,6 +36,30 @@ function writeJson(file, data) {
   }
 }
 
+// Zuletzt gefundene Fälligkeitszeit, für die schon geleert wurde — verhindert
+// wiederholtes Leeren bei jedem Seitenaufruf, solange dieselbe Folge fällig ist.
+let faelligkeitPurgeStand = 0;
+
+// Beiläufige Prüfung bei JEDEM Seitenaufruf (aus server.js aufgerufen): ist eine
+// EINGEPLANTE Folge seit dem letzten Aufruf fällig geworden? Dann den
+// Feed-Zwischenspeicher leeren. Render ist durch den gerade laufenden Aufruf
+// ohnehin wach — das kostet nichts zusätzlich. So wacht Render nur noch durch
+// eigene Nutzung auf (Speichern ODER bloßes Aufrufen der Seite), nie durch
+// fremde Feed-Abfragen von außen. Siehe cloudflare/feed-cache-worker.js.
+export function pruefeFaelligeFolgen() {
+  if (!config.feedMirrorPurgeUrl) return;
+  const jetzt = Date.now();
+  let neuerStand = faelligkeitPurgeStand;
+  for (const e of listEpisodes()) {
+    if (e.status !== 'published' || !e.publishedAt) continue;
+    const t = new Date(e.publishedAt).getTime();
+    if (!isNaN(t) && t <= jetzt && t > faelligkeitPurgeStand) neuerStand = Math.max(neuerStand, t);
+  }
+  if (neuerStand === faelligkeitPurgeStand) return; // nichts neu Fälliges
+  faelligkeitPurgeStand = neuerStand;
+  fetch(config.feedMirrorPurgeUrl).catch((e) => console.error('Feed-Cache-Leerung (fällige Folge) fehlgeschlagen:', e.message));
+}
+
 // Beim Start: fehlt eine lokale JSON-Datei (z. B. neuer Container ohne Volume),
 // aus dem R2-Backup wiederherstellen.
 export async function initStore() {

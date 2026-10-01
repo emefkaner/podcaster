@@ -6,24 +6,31 @@
 // Minuten an, bleibt Render dauerhaft wach und die 750 Gratis-Instanzstunden
 // sind schnell aufgebraucht.
 //
-// Zwei Wege, wie der Zwischenspeicher aktuell bleibt:
-//   1. Aktiv: Die App auf Render ruft nach jeder Änderung (neue Folge,
-//      Einstellungen) selbst /purge?secret=… auf. Render ist in diesem
-//      Moment ohnehin wach — kostet also nichts zusätzlich. Das deckt den
-//      Normalfall „ich habe etwas geändert" sofort ab.
-//   2. Passiv, als Rückfalllösung: Ohne Leerung hält der Zwischenspeicher
-//      höchstens CACHE_SEKUNDEN, danach holt der NÄCHSTE tatsächliche
-//      Aufruf einmal frisch nach — nie von selbst, nur wenn wirklich jemand
-//      fragt. Das fängt eine EINGEPLANTE Folge auf, die ohne dein Zutun zu
-//      ihrer Zeit fällig wird. WICHTIG: CACHE_SEKUNDEN muss GRÖSSER als 15
-//      Minuten sein — sonst holt der Zwischenspeicher öfter nach, als Render
-//      zum Einschlafen braucht, und nichts ist gewonnen.
+// Ausdrücklicher Wunsch des Nutzers: Render soll NUR durch seine eigene
+// Nutzung aufwachen (etwas speichern, oder auch nur die Seite aufrufen) —
+// nie durch fremde Feed-Abfragen von außen. Deshalb holt dieser Worker fast
+// nie von selbst neu, sondern wird aktiv geleert:
+//
+//   1. Bei jeder Änderung (neue Folge, Einstellungen): `src/store.js` ruft
+//      sofort /purge?secret=… auf.
+//   2. Bei JEDEM Seitenaufruf, beiläufig: `pruefeFaelligeFolgen()` in
+//      `src/store.js` prüft, ob eine eingeplante Folge inzwischen fällig
+//      geworden ist, und leert in dem Fall ebenfalls. So reicht es, dass der
+//      Nutzer irgendwann nach dem Veröffentlichungstermin die App öffnet —
+//      Render ist für diesen Aufruf ohnehin wach, das kostet nichts
+//      zusätzlich.
+//
+// CACHE_SEKUNDEN ist NUR NOCH ein Sicherheitsnetz für den Fall, dass die
+// Leerung mal fehlschlägt (falsches Geheimnis, Worker kurz down o. Ä.) — ohne
+// das würde ein stiller Fehler den Feed für immer veralten lassen. Bewusst
+// lang (7 Tage), damit dieses Sicherheitsnetz im Normalbetrieb nie zuschlägt
+// und Render tatsächlich nur durch echte Nutzung aufwacht.
 //
 // Ursprungsadresse: die bestehende App bleibt unverändert erreichbar, dieser
 // Worker fragt sie nur seltener ab, als es Verzeichnisse/Apps sonst täten.
 
 const URSPRUNG = 'https://cinespasten.emefka.com/feed.xml';
-const CACHE_SEKUNDEN = 60 * 60; // 60 Minuten Rückfalllösung — siehe Begründung oben
+const CACHE_SEKUNDEN = 7 * 24 * 60 * 60; // 7 Tage Sicherheitsnetz — siehe Begründung oben
 const CACHE_KEY = new Request('https://feed-cache.internal/feed.xml', { method: 'GET' });
 
 export default {
@@ -47,7 +54,7 @@ export default {
     });
 
     // Fehler beim Ursprung (Render schläft/deployed gerade) NICHT zwischenspeichern —
-    // sonst hängt der Fehler bis zu 60 Minuten fest.
+    // sonst hängt der Fehler bis zu 7 Tage fest.
     if (!ursprungsAntwort.ok) return ursprungsAntwort;
 
     const body = await ursprungsAntwort.arrayBuffer();
